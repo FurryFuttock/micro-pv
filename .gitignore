@@ -1,0 +1,10 @@
+#object files
+*.o
+*.gz
+*.map
+
+#editor files
+*.v*
+
+#other repositories
+.svn
