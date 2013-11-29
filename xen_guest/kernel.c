@@ -81,7 +81,7 @@ void start_kernel(start_info_t *si)
         xenconsole_write("timeofday=%02i:%02i:%02i - %lu\r\n", (int)(now.tv_sec / 3600) % 24, (int)(now.tv_sec / 60) % 60, (int)now.tv_sec % 60, ticks_count);
         ticks_count = 0;
         extern int64_t virq_latency_min_nsec, virq_latency_max_nsec, virq_min_nsec, virq_max_nsec;
-        xenconsole_write("%li,%li,%li,%li\r\n", virq_latency_min_nsec, virq_latency_max_nsec, virq_min_nsec, virq_max_nsec);
+        xenconsole_write("%li,%li,%li,%li\r\n", virq_latency_min_nsec, virq_latency_max_nsec, virq_min_nsec - 1000000, virq_max_nsec - 1000000);
         virq_latency_max_nsec = virq_max_nsec = 0;
         virq_latency_min_nsec = virq_min_nsec = 0xffffffff;
 

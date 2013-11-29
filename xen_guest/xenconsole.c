@@ -72,22 +72,19 @@ static inline evtchn_port_t xenconsole_event(void)
 static int xenconsole_ring_send_no_notify(struct xencons_interface *ring, const char *data, unsigned len)
 {
     int sent = 0;
-    int used = 0;
+    XENCONS_RING_IDX cons, prod;
 
-    while ((sent < len) && (used < sizeof(ring->out)))
-    {
-        // see if we have space for another character
-        used = ring->out_prod - ring->out_cons;
-        if (used >= sizeof(ring->out))
-            break;
+    cons = ring->out_cons;
+    prod = ring->out_prod;
+    mb();
 
-        // store another character
-        ring->out[ring->out_prod] = data[sent++];
-        ring->out_prod = (ring->out_prod + 1) & (sizeof(ring->out) - 1);
-    }
+    while ((sent < len) && ((prod - cons) < sizeof(ring->out)))
+            ring->out[MASK_XENCONS_IDX(prod++, ring->out)] = data[sent++];
 
-    return sent;
-}
+    wmb();
+    ring->out_prod = prod;
+
+    return sent;}
 
 static int xenconsole_ring_send(struct xencons_interface *ring, evtchn_port_t port, const char *data, unsigned len)
 {

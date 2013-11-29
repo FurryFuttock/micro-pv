@@ -1,15 +1,18 @@
+#-- source directories
+SRC_DIRS=stdlib xen_guest
+
 #-- Scan directories to find what to compile
-SRC_C=$(shell find . -iname '*.c')
-SRC_ASM=$(shell find . -iname '*x86_64.S')
-SRC_H=$(shell find . -iname '*.h')
+SRC_C=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.c'))
+SRC_ASM=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*x86_64.S'))
+SRC_H=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.h'))
 
 #-- This is overkill, but safe. I have had problems generating .d files with $(CC) -MM in the past so
 #-- we rebuild whenever ANY header file has changed or the Makefile or course
 DEPS=Makefile $(SRC_H)
 
 #-- Scan directories to get the ones that have include files
-INC_DIR=$(shell find . -iname '*.h' | grep -o '.*/' | sort | uniq)
-INC=$(foreach d,$(INC_DIR),-I$(d))
+INC_DIRS=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.h' | grep -o '.*/' | sort | uniq))
+INC_FLAGS=$(foreach d,$(INC_DIRS),-I$(d))
 
 #-- Calculate what we want to build
 OBJ_C=$(SRC_C:.c=.o)
@@ -19,8 +22,8 @@ OBJ_ASM=$(SRC_ASM:.S=.o)
 XEN_INTERFACE_VERSION := 0x00040400
 
 #-- Set compiler/assembler
-CFLAGS  = -c -m64 -std=c99 -Wall -g -Dasm=__asm $(INC) -D__XEN_INTERFACE_VERSION__=$(XEN_INTERFACE_VERSION)
-ASFLAGS = -c -m64 -D__ASSEMBLY__ $(INC)
+CFLAGS  = -c -m64 -std=c99 -Wall -g -Dasm=__asm $(INC_FLAGS) -D__XEN_INTERFACE_VERSION__=$(XEN_INTERFACE_VERSION)
+ASFLAGS = -c -m64 -D__ASSEMBLY__ $(INC_FLAGS)
 
 #-- What we want to make
 OUTPUT=pv400
@@ -48,6 +51,14 @@ debug:
 	sudo -b gdbsx -a `sudo xl domid pv400` 64 9999
 	sleep 1
 	gdb -x $(OUTPUT).gdb $(OUTPUT)
+
+cpupool:
+	sudo xl cpupool-cpu-remove Pool-0 0
+	sudo xl cpupool-create pv400_cpupool
+
+cpupool-refresh:
+	sudo xl cpupool-destroy pv400
+	sudo xl cpupool-create pv400_cpupool
 
 top dmesg list:
 	sudo xl $@

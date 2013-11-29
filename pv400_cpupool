@@ -10,7 +10,7 @@
 name = "pv400"
 
 # the scheduler to use: valid are e.g. credit, sedf, credit2
-sched = "credit"
+sched = "arinc653"
 
 # list of cpus to use
 cpus = ["0"]

@@ -197,6 +197,16 @@ static int timer_set_next_event()
     return ret;
 }
 
+static int timer_stop_periodic()
+{
+    int cpu = smp_processor_id();
+    int ret;
+
+    ret = HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, cpu, NULL);
+
+    return ret;
+}
+
 static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 {
     // get now
@@ -210,25 +220,21 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
     get_time_values_from_xen();
     update_wallclock();
 
-    // statistics
+    // latency
     int64_t latency = now - timer_deadline;
-    if (latency > 0)
-    {
-        // latency
-        if (virq_latency_max_nsec < latency)
-            virq_latency_max_nsec = latency;
-        if (virq_latency_min_nsec > latency)
-            virq_latency_min_nsec = latency;
-        last_timer_deadline = timer_deadline;
+    if (virq_latency_max_nsec < latency)
+        virq_latency_max_nsec = latency;
+    if (virq_latency_min_nsec > latency)
+        virq_latency_min_nsec = latency;
+    last_timer_deadline = timer_deadline;
 
-        // period
-        int64_t period = now - last_timer;
-        if (virq_max_nsec < period)
-            virq_max_nsec = period;
-        if (virq_min_nsec > period)
-            virq_min_nsec = period;
-        last_timer = now;
-    }
+    // period
+    int64_t period = now - last_timer;
+    if (virq_max_nsec < period)
+        virq_max_nsec = period;
+    if (virq_min_nsec > period)
+        virq_min_nsec = period;
+    last_timer = now;
 
     // set the next timer
     timer_deadline += TIMER_PERIOD;
@@ -238,6 +244,9 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 void xentime_init(void)
 {
     PRINTK("Initialising timer interface\n");
+
+    // disable the periodic timer event
+    timer_stop_periodic();
 
     // initialise the time
     get_time_values_from_xen();
