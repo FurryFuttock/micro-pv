@@ -1,5 +1,5 @@
 #-- source directories
-SRC_DIRS=stdlib xen_guest
+SRC_DIRS=stdlib micro_pv
 
 #-- Scan directories to find what to compile
 SRC_C=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.c'))
@@ -43,7 +43,7 @@ all : $(OUTPUT).o
 #-- 2.- Rewrite the object file keeping just the xenos_* and _start symbols as global
 $(OUTPUT).o: $(OBJ_ASM) $(OBJ_C)
 	$(LD) -r -m elf_x86_64 -o $@ $^
-	objcopy -w -G xenos_* -G _start $@ $@
+	objcopy -w -G xenos_* -G _start -G do_exit -G xenconsole_*  -G xentime_* -G PRINTK $@ $@
 
 clean:
 	rm -f $(OBJ_C) $(OBJ_ASM) $(OUTPUT).o $(OUTPUT).map
