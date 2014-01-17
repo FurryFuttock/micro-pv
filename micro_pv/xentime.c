@@ -24,6 +24,7 @@
 #include <sys/time.h>
 #include <stdint.h>
 #include <xen/vcpu.h>
+#include <string.h>
 
 /*---------------------------------------------------------------------
   -- project includes (import)
@@ -53,13 +54,13 @@ struct shadow_time_info {
 /*---------------------------------------------------------------------
   -- function prototypes
   ---------------------------------------------------------------------*/
-static uint64_t dummy(uint64_t now, uint64_t timer_deadline);
+static uint64_t dummy(struct pt_regs *regs);
 uint64_t xentime_monotonic_clock(void);
 
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
-uint64_t (*xentime_irq)(uint64_t now, uint64_t timer_deadline) = dummy;
+uint64_t (*xentime_irq)(struct pt_regs *regs) = dummy;
 
 /*---------------------------------------------------------------------
   -- local variables
@@ -165,7 +166,7 @@ static int timer_stop_periodic()
     return ret;
 }
 
-static uint64_t dummy(uint64_t now, uint64_t timer_deadline)
+static uint64_t dummy(struct pt_regs *regs)
 {
     return TIMER_PERIOD;
 }
@@ -176,13 +177,29 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
     get_time_values_from_xen();
     update_wallclock();
 
-    // set the next timer event
-    uint64_t this_timer_deadline = timer_deadline;
-    timer_deadline += timer_period;
-    timer_set_next_event();
+    // store the current stack data
+    unsigned long rsp = regs->rsp;
+    unsigned long ss = regs->ss;
 
-    // call the guest OS handler
-    timer_period = xentime_irq(xentime_monotonic_clock(), this_timer_deadline);
+    // we repeat to catch up on any missed events. this shouldn't happen as the underlying
+    // system should make sure that the periodic interrupt handler should be short enough,
+    // but it may make things a bit more stable.
+    do
+    {
+        // call the guest OS handler. The guest returns the time to the next interrupt,
+        // and will alter the register file if it want's to perform a context switch.
+        timer_period = xentime_irq(regs);
+
+        // set the next timer interrupt event
+        timer_deadline += timer_period;
+    } while (timer_deadline < xentime_monotonic_clock());
+
+    // if the timer irq changed the stack then apply the changes
+    if ((rsp != regs->rsp) || (ss != regs->ss))
+        HYPERVISOR_stack_switch(regs->ss, regs->rsp);
+
+    // set the next timer event
+    timer_set_next_event();
 }
 
 /*---------------------------------------------------------------------
@@ -230,10 +247,6 @@ void xentime_init(void)
     // disable the periodic timer event
     timer_stop_periodic();
 
-    // initialise the time
-    get_time_values_from_xen();
-    update_wallclock();
-
     // bind the timer virtual IRQ
     port = bind_virq(VIRQ_TIMER, &timer_handler, NULL);
     if (-1 == port)
@@ -243,8 +256,26 @@ void xentime_init(void)
     }
     unmask_evtchn(port);
 
+    // initialise the time
+    get_time_values_from_xen();
+    update_wallclock();
+
     // initialise the periodic timer
     timer_deadline = xentime_monotonic_clock() + timer_period;
     timer_set_next_event();
+}
+
+void xentime_initialise_context(struct pt_regs *regs, void *start_ptr, void *stack_ptr, int stack_size)
+{
+    // zero the register file
+    memset(regs, 0,  sizeof(struct pt_regs));
+
+    // we assume that everything is in the same data area, so we initialise the stack segment and
+    // code segment to the same as we have
+    { uint64_t ss; asm("\t movq %%ss,%0" : "=r"(ss)); regs->ss = ss; }  // preserve the current stack segment
+    regs->rsp = (uint64_t)(stack_ptr + stack_size) & ~7;                // 64 bit aligned top of stack
+    regs->eflags = 0x200;                                               // flags - enable interrupts
+    { uint64_t cs; asm("\t movq %%cs,%0" : "=r"(cs)); regs->cs = cs; }  // preserve the current code segment
+    regs->rip = (uint64_t)start_ptr;                                    // instruction pointer
 }
 

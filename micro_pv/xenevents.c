@@ -47,6 +47,7 @@ typedef struct _ev_action_t {
  * Defined in bootstrap.<arch>.S
  */
 void hypervisor_callback(void);
+void hypervisor_callback_spm(void);
 
 /**
  * Defined in bootstrap.<arch>.S

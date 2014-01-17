@@ -37,7 +37,6 @@
   ---------------------------------------------------------------------*/
 void xentime_init(void);
 int xentime_gettimeofday(struct timeval *tv, void *tz);
-uint64_t xentime_monotonic_clock(void);
 
 /*---------------------------------------------------------------------
   -- global variables

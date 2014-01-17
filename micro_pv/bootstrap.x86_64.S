@@ -18,14 +18,14 @@
 .text
 
 _start:
-    cld
-    movq stack_start(%rip),%rsp
-    andq $(~(__STACK_SIZE-1)), %rsp
-    movq %rsi,%rdi
+    cld                                 // clear direction
+    movq stack_start,%rsp               // load the stack pointer. we leave the stack segment alone as it is not required in a flat 64bit implementation
+    andq $~8,%rsp                       // align 64 bit
+    movq %rsi,%rdi                      // Xen put the pointer to the start info into rsi, we move it to the first parameter
     call start_kernel
 
 stack_start:
-    .quad stack+(2*__STACK_SIZE)
+    .quad stack+__STACK_SIZE            // get top index of stack
 
     /* Unpleasant -- the PTE that maps this page is actually overwritten */
     /* to map the real shared-info page! :-)                             */

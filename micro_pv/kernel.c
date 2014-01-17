@@ -25,6 +25,7 @@
 #include "hypervisor.h"
 #include "xenconsole.h"
 #include "xentime.h"
+#include "../micro_pv.h"
 
 /*---------------------------------------------------------------------
   -- project includes (export)
@@ -43,7 +44,7 @@ int main();
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
-char stack[2 * __STACK_SIZE];
+char stack[__STACK_SIZE] = { 0 };
 
 /*---------------------------------------------------------------------
   -- local variables

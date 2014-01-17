@@ -43,11 +43,6 @@
  */
 int xenconsole_init(void);
 
-int xenconsole_write(const void *ptr, size_t len);
-int xenconsole_read(void *ptr,  size_t len);
-int xenconsole_read_available();
-int xenconsole_write_available();
-
 int xenconsole_printf(const char *format, ...) __attribute__((format (printf, 1, 2)));
 
 /*---------------------------------------------------------------------

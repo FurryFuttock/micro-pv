@@ -37,6 +37,7 @@ do {                                                           \
 #include "hypervisor.h"
 #include "hypercall.h"
 #include "traps.h"
+#include "../micro_pv.h"
 
 /*---------------------------------------------------------------------
   -- project includes (export)

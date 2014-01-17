@@ -13,8 +13,6 @@
 #define HYPERVISOR_PRODUCE_RING_BUFFER  (0)
 #define HYPERVISOR_CONSUME_RING_BUFFER  (0)
 
-#define PRINTK(format...) printk(__FILE__, __LINE__, ##format)
-
 /*---------------------------------------------------------------------
   -- standard includes
   ---------------------------------------------------------------------*/

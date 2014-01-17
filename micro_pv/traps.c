@@ -27,6 +27,7 @@
 #include "hypercall.h"
 #include "hypervisor.h"
 #include "traps.h"
+#include "../micro_pv.h"
 
 /*---------------------------------------------------------------------
   -- macros (postamble)
