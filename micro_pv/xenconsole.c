@@ -109,7 +109,7 @@ int xenconsole_write(const void *ptr, size_t len)
 int xenconsole_write_available()
 {
     struct xencons_interface *ring = xenconsole_interface();
-    return (ring->out_prod - ring->out_cons) & (sizeof(ring->out) - 1);
+    return (ring->out_prod - ring->out_cons - 1) & (sizeof(ring->out) - 1);
 }
 
 int xenconsole_printf(const char *format, ...)
