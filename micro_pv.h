@@ -84,6 +84,18 @@ enum xen_register_file
   -- function prototypes
   ---------------------------------------------------------------------*/
 
+// --------- EVENT FUNCTIONS
+/**
+ * Simulate a processor CLI. Internally this just disables hypervisor events.
+ */
+void xenevents_cli(void);
+
+/**
+ * Simulate a processor STI. Internally this just enables hypervisor events.
+ */
+void xenevents_sti(void);
+
+
 // --------- TIME FUNCTIONS
 /**
  * Initialise a stack context. This is analogous to thread.
@@ -173,11 +185,21 @@ int xenconsole_write(const void *ptr, size_t len);
  * pointer to its' timer interrupt handler. I assume that this is where
  * the multitasking context switch is going to occur.
  *
- * @param pt_regs The processor register file
+ * @param regs The processor register file
  *
  * @return The timer interrupt period in nanoseconds.
  */
 extern uint64_t (*xentime_irq)(struct pt_regs *regs);
+
+/**
+ * This is the register where the overlying operating system must store the
+ * pointer to its floating point context recovery.
+ *
+ * @param regs The processor register file
+ *
+ * @return Ignored
+ */
+extern uint64_t (*xentraps_fp_context)(struct pt_regs *regs);
 
 /*---------------------------------------------------------------------
   -- local variables
