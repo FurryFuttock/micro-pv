@@ -168,6 +168,13 @@ void hypervisor_start(start_info_t *si)
     PRINTK("Allocated memory MB              : %lu", si->nr_pages >> (20 - __PAGE_SHIFT));
     PRINTK("Machine address of shared memory : 0x%lx", si->shared_info);
 
+    // initialise FPU
+    __asm__ volatile(" fninit");
+
+    // initialise sse
+    unsigned long status = 0x1f80;
+    __asm__ volatile("ldmxcsr %0" : : "m" (status));
+
     // store the startup information. This is passed in as a parameter to the _start function by the hypervisor.
     memcpy(&hypervisor_start_info, si, sizeof(hypervisor_start_info));
 
