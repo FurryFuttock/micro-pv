@@ -10,6 +10,7 @@
 /*---------------------------------------------------------------------
   -- macros (preamble)
   ---------------------------------------------------------------------*/
+#define read_cr2() (hypervisor_shared_info->vcpu_info[smp_processor_id()].arch.cr2)
 
 /*---------------------------------------------------------------------
   -- standard includes
@@ -66,6 +67,7 @@ void machine_check(void);
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
+uint64_t(*xentraps_fp_context)(struct pt_regs *regs) = NULL;
 
 /*---------------------------------------------------------------------
   -- local variables
@@ -94,30 +96,143 @@ static trap_info_t trap_table[] = {
 /*---------------------------------------------------------------------
   -- private functions
   ---------------------------------------------------------------------*/
+static void dump_regs(struct pt_regs *regs)
+{
+    PRINTK("-------------------- REGISTER FILE --------------------");
+    PRINTK("RIP: %04lx:%016lx ", regs->cs & 0xffff, regs->rip);
+    PRINTK("RSP: %04lx:%016lx  EFLAGS: %08lx\n",
+           regs->ss, regs->rsp, regs->eflags);
+    PRINTK("RAX: %016lx RBX: %016lx RCX: %016lx\n",
+           regs->rax, regs->rbx, regs->rcx);
+    PRINTK("RDX: %016lx RSI: %016lx RDI: %016lx\n",
+           regs->rdx, regs->rsi, regs->rdi);
+    PRINTK("RBP: %016lx R08: %016lx R09: %016lx\n",
+           regs->rbp, regs->r8, regs->r9);
+    PRINTK("R10: %016lx R11: %016lx R12: %016lx\n",
+           regs->r10, regs->r11, regs->r12);
+    PRINTK("R13: %016lx R14: %016lx R15: %016lx\n",
+           regs->r13, regs->r14, regs->r15);
+}
+
+static void do_stack_walk(unsigned long frame_base)
+{
+    PRINTK("-------------------- STACK WALK    --------------------");
+    unsigned long *frame = (void*) frame_base;
+    PRINTK("base is %#lx ", frame_base);
+    PRINTK("caller is %#lx\n", frame[1]);
+    if (frame[0])
+        do_stack_walk(frame[0]);
+}
+
+static void dump_mem(unsigned long addr)
+{
+    PRINTK("-------------------- MEMORY        --------------------");
+    unsigned long i;
+    if (addr < __PAGE_SIZE)
+        return;
+
+    for (i = ((addr)-16 ) & ~15; i < (((addr)+48 ) & ~15); )
+    {
+        static char hexchar[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+        char buffer[68];
+        int j;
+
+        // store address
+        for (j = 0; j < 16; j++)
+            buffer[j] = hexchar[(i >> (j * 4)) & 0xf];
+        buffer[16] = ':';
+        buffer[17] = ' ';
+
+        // 16 bytes of data
+        for (j = 0; (j < 48); j += 3, i++)
+        {
+            buffer[18 + j    ] = hexchar[((*(unsigned char*)i) >> 4) & 0xf];
+            buffer[18 + j + 1] = hexchar[((*(unsigned char*)i) >> 0) & 0xf];
+            buffer[18 + j + 2] = ' ';
+        }
+        buffer[67] = 0;
+        PRINTK("%s\n", buffer);
+    }
+}
+
+static void dump_context(struct pt_regs *regs)
+{
+    // log context
+    dump_regs(regs);
+    do_stack_walk(regs->rbp);
+    dump_mem(regs->rsp);
+    dump_mem(regs->rbp);
+    dump_mem(regs->rip);
+
+    // stop
+    struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_crash };
+    HYPERVISOR_sched_op(SCHEDOP_shutdown, &sched_shutdown);
+}
 
 /*---------------------------------------------------------------------
   -- public functions
   ---------------------------------------------------------------------*/
 
 /* Dummy implementation.  Should actually do something */
-void do_divide_error(struct pt_regs *regs)                  { PRINTK("%s\n", __FUNCTION__); }
-void do_debug(struct pt_regs *regs)                         { PRINTK("%s\n", __FUNCTION__); }
-void do_int3(struct pt_regs *regs)                          { PRINTK("%s\n", __FUNCTION__); }
-void do_overflow(struct pt_regs *regs)                      { PRINTK("%s\n", __FUNCTION__); }
-void do_bounds(struct pt_regs *regs)                        { PRINTK("%s\n", __FUNCTION__); }
-void do_invalid_op(struct pt_regs *regs)                    { PRINTK("%s\n", __FUNCTION__); }
-void do_device_not_available(struct pt_regs *regs)          { PRINTK("%s\n", __FUNCTION__); }
-void do_coprocessor_segment_overrun(struct pt_regs *regs)   { PRINTK("%s\n", __FUNCTION__); }
-void do_invalid_TSS(struct pt_regs *regs)                   { PRINTK("%s\n", __FUNCTION__); }
-void do_segment_not_present(struct pt_regs *regs)           { PRINTK("%s\n", __FUNCTION__); }
-void do_stack_segment(struct pt_regs *regs)                 { PRINTK("%s\n", __FUNCTION__); }
-void do_general_protection(struct pt_regs *regs)            { PRINTK("%s\n", __FUNCTION__); }
-void do_page_fault(struct pt_regs *regs)                    { PRINTK("%s\n", __FUNCTION__); }
-void do_coprocessor_error(struct pt_regs *regs)             { PRINTK("%s\n", __FUNCTION__); }
-void do_simd_coprocessor_error(struct pt_regs *regs)        { PRINTK("%s\n", __FUNCTION__); }
-void do_alignment_check(struct pt_regs *regs)               { PRINTK("%s\n", __FUNCTION__); }
-void do_spurious_interrupt_bug(struct pt_regs *regs)        { PRINTK("%s\n", __FUNCTION__); }
-void do_machine_check(struct pt_regs *regs)                 { PRINTK("%s\n", __FUNCTION__); }
+void do_divide_error(struct pt_regs *regs)                  { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_debug(struct pt_regs *regs)                         { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_int3(struct pt_regs *regs)                          { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_overflow(struct pt_regs *regs)                      { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_bounds(struct pt_regs *regs)                        { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_invalid_op(struct pt_regs *regs)                    { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+
+void do_device_not_available(struct pt_regs *regs)
+{
+    // if we have a function to handle this then call it
+    if (xentraps_fp_context)
+        xentraps_fp_context(regs);
+    // we don't have a handler so crash
+    else
+    {
+        PRINTK("%s\n", __FUNCTION__);
+        dump_context(regs);
+    }
+}
+
+void do_coprocessor_segment_overrun(struct pt_regs *regs)   { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_invalid_TSS(struct pt_regs *regs)                   { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_segment_not_present(struct pt_regs *regs)           { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_stack_segment(struct pt_regs *regs)                 { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_general_protection(struct pt_regs *regs)            { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+
+void do_page_fault(struct pt_regs *regs, unsigned long error_code)
+{
+    PRINTK("%s\n", __FUNCTION__);
+
+    unsigned long addr = read_cr2();
+    static volatile int handling_pg_fault = 0;
+
+    /* If we are already handling a page fault, and got another one
+       that means we faulted in pagetable walk. Continuing here would cause
+       a recursive fault */
+    if(handling_pg_fault == 1)
+    {
+        PRINTK("Page fault in pagetable walk (access to invalid memory?).\n");
+        struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_crash };
+        HYPERVISOR_sched_op(SCHEDOP_shutdown, &sched_shutdown);
+    }
+    handling_pg_fault++;
+    barrier();
+
+    PRINTK("Page fault at linear address %p, rip %p, regs %p, sp %p, our_sp %p, code %lx\n",
+           (void *)addr, (void *)regs->rip, regs, (void *)regs->rsp, &addr, error_code);
+
+    dump_context(regs);
+
+    /* We should never get here ... but still */
+    handling_pg_fault--;
+}
+
+void do_coprocessor_error(struct pt_regs *regs)             { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_simd_coprocessor_error(struct pt_regs *regs)        { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_alignment_check(struct pt_regs *regs)               { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_spurious_interrupt_bug(struct pt_regs *regs)        { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_machine_check(struct pt_regs *regs)                 { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
 
 /*
  * Submit a virtual IDT to teh hypervisor. This consists of tuples
