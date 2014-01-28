@@ -227,3 +227,20 @@ void xenevents_init(void)
     hypervisor_shared_info->vcpu_info[0].evtchn_upcall_mask = 0;
 }
 
+void xenevents_cli(void)
+{
+    hypervisor_shared_info->vcpu_info[0].evtchn_upcall_mask = 1;
+    barrier();
+}
+
+void xenevents_sti(void)
+{
+    barrier();
+    hypervisor_shared_info->vcpu_info[0].evtchn_upcall_mask = 0;
+    barrier();
+
+    /* unmask then check (avoid races) */
+    if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
+        force_evtchn_callback();
+}
+
