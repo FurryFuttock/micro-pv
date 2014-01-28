@@ -22,7 +22,7 @@ OBJ_ASM=$(SRC_ASM:.S=.o)
 XEN_INTERFACE_VERSION := 0x00040400
 
 #-- Set compiler/assembler
-CFLAGS  = -c -m64 -std=c99 -Wall -g -Dasm=__asm $(INC_FLAGS) -D__XEN_INTERFACE_VERSION__=$(XEN_INTERFACE_VERSION)
+CFLAGS  = -c -m64 -std=c99 -Wall -g $(INC_FLAGS) -D__XEN_INTERFACE_VERSION__=$(XEN_INTERFACE_VERSION) -fno-builtin -fno-stack-protector -fgnu89-inline -fno-reorder-blocks -fno-asynchronous-unwind-tables
 ASFLAGS = -c -m64 -D__ASSEMBLY__ $(INC_FLAGS)
 
 #-- What we want to make
@@ -43,7 +43,7 @@ all : $(OUTPUT).o
 #-- 2.- Rewrite the object file keeping the minimum symbols as global. This doesn't affect debugging as the debug info is not removed.
 $(OUTPUT).o: $(OBJ_ASM) $(OBJ_C)
 	$(LD) -r -m elf_x86_64 -o $@ $^
-	objcopy -w -G xenos_* -G _start -G do_exit -G xenconsole_*  -G xentime_* -G printk -G stack $@ $@
+	objcopy -w -G xenos_* -G _start -G do_exit -G xenconsole_*  -G xentime_* -G xenevents_* -G xentraps_* -G printk -G stack $@ $@
 
 clean:
 	rm -f $(OBJ_C) $(OBJ_ASM) $(OUTPUT).o $(OUTPUT).map
