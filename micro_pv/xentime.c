@@ -181,18 +181,13 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
     unsigned long rsp = regs->rsp;
     unsigned long ss = regs->ss;
 
-    // we repeat to catch up on any missed events. this shouldn't happen as the underlying
-    // system should make sure that the periodic interrupt handler should be short enough,
-    // but it may make things a bit more stable.
-    do
-    {
-        // call the guest OS handler. The guest returns the time to the next interrupt,
-        // and will alter the register file if it want's to perform a context switch.
-        timer_period = xentime_irq(regs);
+    // call the guest OS handler. The guest returns the time to the next interrupt,
+    // and will alter the register file if it want's to perform a context switch.
+    timer_period = xentime_irq(regs);
 
-        // set the next timer interrupt event
-        timer_deadline += timer_period;
-    } while (timer_deadline < xentime_monotonic_clock());
+    // set the next timer interrupt event. this must be in the fugure
+    do timer_deadline += timer_period;
+    while (timer_deadline < xentime_monotonic_clock());
 
     // if the timer irq changed the stack then apply the changes
     if ((rsp != regs->rsp) || (ss != regs->ss))
