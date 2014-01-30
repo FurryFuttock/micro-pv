@@ -47,7 +47,6 @@ typedef struct _ev_action_t {
  * Defined in bootstrap.<arch>.S
  */
 void hypervisor_callback(void);
-void hypervisor_callback_spm(void);
 
 /**
  * Defined in bootstrap.<arch>.S
@@ -168,7 +167,6 @@ static int do_event(evtchn_port_t port, struct pt_regs *regs)
     action->handler(port, regs, action->data);
 
     return 1;
-
 }
 
 void do_hypervisor_callback(struct pt_regs *regs)
@@ -214,9 +212,6 @@ void do_hypervisor_callback(struct pt_regs *regs)
 
 void xenevents_init(void)
 {
-    /* Set the event delivery callbacks */
-    HYPERVISOR_set_callbacks((unsigned long)hypervisor_callback, (unsigned long)failsafe_callback, 0);
-
     /* Set all handlers to ignore, and mask them */
     for (unsigned int i = 0; i < NUM_CHANNELS; i++)
     {
@@ -224,7 +219,8 @@ void xenevents_init(void)
         mask_evtchn(i);
     }
 
-    hypervisor_shared_info->vcpu_info[0].evtchn_upcall_mask = 0;
+    /* Set the event delivery callbacks */
+    HYPERVISOR_set_callbacks((unsigned long)hypervisor_callback, (unsigned long)failsafe_callback, 0);
 }
 
 void xenevents_cli(void)
@@ -240,7 +236,7 @@ void xenevents_sti(void)
     barrier();
 
     /* unmask then check (avoid races) */
-    if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
-        force_evtchn_callback();
+    //if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
+    //    force_evtchn_callback();
 }
 
