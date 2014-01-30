@@ -153,6 +153,7 @@ static void hypervisor_setup_xen_features(void)
 
     for (i = 0; i < XENFEAT_NR_SUBMAPS; i++)
     {
+        fi.submap = 0;
         fi.submap_idx = i;
         if (HYPERVISOR_xen_version(XENVER_get_features, &fi) < 0)
             break;
