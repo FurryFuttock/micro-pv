@@ -114,6 +114,35 @@ static void dump_regs(struct pt_regs *regs)
            regs->r13, regs->r14, regs->r15);
 }
 
+static void dump_fp_regs(struct pt_regs *regs)
+{
+    uint64_t xmm0, xmm1, xmm2, xmm3, xmm4, xmm5, xmm6, xmm7;
+    uint64_t xmm8, xmm9, xmm10, xmm11, xmm12, xmm13, xmm14, xmm15, mxcsr;
+    __asm__(" movq %%xmm0,%0" : "=m" (xmm0));
+    __asm__(" movq %%xmm1,%0" : "=m" (xmm1));
+    __asm__(" movq %%xmm2,%0" : "=m" (xmm2));
+    __asm__(" movq %%xmm3,%0" : "=m" (xmm3));
+    __asm__(" movq %%xmm4,%0" : "=m" (xmm4));
+    __asm__(" movq %%xmm5,%0" : "=m" (xmm5));
+    __asm__(" movq %%xmm6,%0" : "=m" (xmm6));
+    __asm__(" movq %%xmm7,%0" : "=m" (xmm7));
+    __asm__(" movq %%xmm8,%0" : "=m" (xmm8));
+    __asm__(" movq %%xmm9,%0" : "=m" (xmm9));
+    __asm__(" movq %%xmm10,%0" : "=m" (xmm10));
+    __asm__(" movq %%xmm11,%0" : "=m" (xmm11));
+    __asm__(" movq %%xmm12,%0" : "=m" (xmm12));
+    __asm__(" movq %%xmm13,%0" : "=m" (xmm13));
+    __asm__(" movq %%xmm14,%0" : "=m" (xmm14));
+    __asm__(" movq %%xmm15,%0" : "=m" (xmm15));
+    __asm__(" stmxcsr %0" : "=m" (mxcsr));
+    PRINTK("XMM0:  %016lx XMM1:  %016lx XMM2:  %016lx\n", xmm0, xmm1, xmm2);
+    PRINTK("XMM3:  %016lx XMM4:  %016lx XMM5:  %016lx\n", xmm3, xmm4, xmm5);
+    PRINTK("XMM6:  %016lx XMM7:  %016lx XMM8:  %016lx\n", xmm6, xmm7, xmm8);
+    PRINTK("XMM9:  %016lx XMM10: %016lx XMM11: %016lx\n", xmm9, xmm10, xmm11);
+    PRINTK("XMM12: %016lx XMM13: %016lx XMM14: %016lx\n", xmm12, xmm13, xmm14);
+    PRINTK("XMM15: %016lx MXCSR: %016lx\n", xmm15, mxcsr);
+}
+
 static void do_stack_walk(unsigned long frame_base)
 {
     PRINTK("-------------------- STACK WALK    --------------------");
@@ -159,6 +188,7 @@ static void dump_context(struct pt_regs *regs)
 {
     // log context
     dump_regs(regs);
+    dump_fp_regs(regs);
     do_stack_walk(regs->rbp);
     dump_mem(regs->rsp);
     dump_mem(regs->rbp);
@@ -229,7 +259,12 @@ void do_page_fault(struct pt_regs *regs, unsigned long error_code)
 }
 
 void do_coprocessor_error(struct pt_regs *regs)             { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_simd_coprocessor_error(struct pt_regs *regs)        { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_simd_coprocessor_error(struct pt_regs *regs)
+{
+    PRINTK("%s\n", __FUNCTION__);
+    dump_context(regs);
+    //__asm__ volatile (" fninit");
+}
 void do_alignment_check(struct pt_regs *regs)               { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
 void do_spurious_interrupt_bug(struct pt_regs *regs)        { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
 void do_machine_check(struct pt_regs *regs)                 { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
