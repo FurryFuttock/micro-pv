@@ -173,6 +173,13 @@ static uint64_t dummy(struct pt_regs *regs)
 
 static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 {
+    // set the next timer interrupt event. this must be in the fugure
+    do timer_deadline += timer_period;
+    while (timer_deadline < xentime_monotonic_clock());
+
+    // set the next timer event
+    timer_set_next_event();
+
     // housekeeping
     get_time_values_from_xen();
     update_wallclock();
@@ -185,10 +192,6 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
     // and will alter the register file if it want's to perform a context switch.
     timer_period = xentime_irq(regs);
 
-    // set the next timer interrupt event. this must be in the fugure
-    do timer_deadline += timer_period;
-    while (timer_deadline < xentime_monotonic_clock());
-
     // if the timer irq changed the stack then apply the changes
     if ((rsp != regs->rsp) || (ss != regs->ss))
     {
@@ -199,9 +202,6 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
         // we get a device_disabled trap
         HYPERVISOR_fpu_taskswitch(1);
     }
-
-    // set the next timer event
-    timer_set_next_event();
 }
 
 /*---------------------------------------------------------------------
@@ -275,7 +275,7 @@ void xentime_initialise_context(struct pt_regs *regs, void *start_ptr, void *sta
     // we assume that everything is in the same data area, so we initialise the stack segment and
     // code segment to the same as we have
     { uint64_t ss; __asm__("\t movq %%ss,%0" : "=r"(ss)); regs->ss = ss; }  // preserve the current stack segment
-    regs->rsp = (uint64_t)(stack_ptr + stack_size) & ~7;                // 64 bit aligned top of stack
+    regs->rsp = (uint64_t)(stack_ptr + stack_size);                         // top of stack
     regs->eflags = 0x200;                                               // flags - enable interrupts
     { uint64_t cs; __asm__("\t movq %%cs,%0" : "=r"(cs)); regs->cs = cs; }  // preserve the current code segment
     regs->rip = (uint64_t)start_ptr;                                    // instruction pointer
