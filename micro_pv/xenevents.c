@@ -14,6 +14,8 @@
 /*---------------------------------------------------------------------
   -- standard includes
   ---------------------------------------------------------------------*/
+#include <stdint.h>
+#include <xen/vcpu.h>
 
 /*---------------------------------------------------------------------
   -- project includes (import)
@@ -202,7 +204,6 @@ void do_hypervisor_callback(struct pt_regs *regs)
         while ((l2 = active_evtchns(cpu, s, l1i)) != 0)
         {
             l2i = __ffs(l2);
-            l2 &= ~(1UL << l2i);
 
             port = (l1i * (sizeof(unsigned long) * 8)) + l2i;
             do_event(port, regs);
@@ -236,7 +237,15 @@ void xenevents_sti(void)
     barrier();
 
     /* unmask then check (avoid races) */
-    //if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
-    //    force_evtchn_callback();
+    if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
+    {
+        int cpu = smp_processor_id();
+        struct vcpu_set_singleshot_timer single;
+
+        single.timeout_abs_ns = xentime_monotonic_clock() + 1;
+        single.flags = VCPU_SSHOTTMR_future;
+
+        HYPERVISOR_vcpu_op(VCPUOP_set_singleshot_timer, cpu, &single);
+    }
 }
 
