@@ -45,8 +45,6 @@
  */
 void hypervisor_start(start_info_t *si);
 
-void printk(const char *file, long line, const char *format, ...) __attribute__((format (printf, 3, 4)));
-
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
