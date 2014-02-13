@@ -281,3 +281,13 @@ void xentime_initialise_context(struct pt_regs *regs, void *start_ptr, void *sta
     regs->rip = (uint64_t)start_ptr;                                    // instruction pointer
 }
 
+void xentime_yield()
+{
+    HYPERVISOR_sched_op(SCHEDOP_yield, 0);
+}
+
+void xentime_block()
+{
+    HYPERVISOR_sched_op(SCHEDOP_block, 0);
+}
+

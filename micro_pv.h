@@ -112,6 +112,16 @@ void xenevents_sti(void);
 void xentime_initialise_context(struct pt_regs *regs, void *start_ptr, void *stack_ptr, int stack_size);
 
 /**
+ * Release the CPU.
+ */
+void xentime_yield(void);
+
+/**
+ * Release the CPU and block the domain until the next event.
+ */
+void xentime_block(void);
+
+/**
  * Return the current time of day. This is real time, not machine time,
  * and is kept in sync with the HyperVisor.
  *
