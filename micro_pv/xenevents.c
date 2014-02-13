@@ -226,26 +226,21 @@ void xenevents_init(void)
 
 void xenevents_cli(void)
 {
+    // mask events
+    barrier();
     hypervisor_shared_info->vcpu_info[0].evtchn_upcall_mask = 1;
     barrier();
 }
 
 void xenevents_sti(void)
 {
+    // unmask events
     barrier();
     hypervisor_shared_info->vcpu_info[0].evtchn_upcall_mask = 0;
     barrier();
 
-    /* unmask then check (avoid races) */
+    // force channel event (if there is one)
     if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
-    {
-        int cpu = smp_processor_id();
-        struct vcpu_set_singleshot_timer single;
-
-        single.timeout_abs_ns = xentime_monotonic_clock() + 1;
-        single.flags = VCPU_SSHOTTMR_future;
-
-        HYPERVISOR_vcpu_op(VCPUOP_set_singleshot_timer, cpu, &single);
-    }
+        HYPERVISOR_xen_version(0, NULL); 
 }
 
