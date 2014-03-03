@@ -402,18 +402,18 @@ int xenstore_init(void)
     psnprintf(buffer, sizeof(buffer), "w%s", hypervisor_domid);
     xenstore_set_perms(path, buffer);
     xenstore_get_perms(path, buffer, buffer_size, &buffer_length);
-    xenconsole_write("%s perms: %i %.*s\r\n", path, (int)buffer_length, (int)buffer_length, buffer);
+    micropv_console_write("%s perms: %i %.*s\r\n", path, (int)buffer_length, (int)buffer_length, buffer);
 
     char data_path[100];
     char data_value[20];
     psnprintf(data_value, sizeof(data_value), "%lx", (long unsigned)0); //virt_to_mfn(ring_buffer));
     psnprintf(data_path, sizeof(data_path), "%s/command_line", path);
     if (xenstore_write(data_path, "100"))
-        xenconsole_write("xenstore_write %s fails %s\r\n", data_path, xenstore_dump);
+        micropv_console_write("xenstore_write %s fails %s\r\n", data_path, xenstore_dump);
     else if (xenstore_read(data_path, buffer, buffer_size, &buffer_length))
-        xenconsole_write("xenstore_read %s fails %s\r\n", data_path, xenstore_dump);
+        micropv_console_write("xenstore_read %s fails %s\r\n", data_path, xenstore_dump);
     else
-        xenconsole_write("%s = %.*s\r\n", data_path, (int)buffer_length, buffer);
+        micropv_console_write("%s = %.*s\r\n", data_path, (int)buffer_length, buffer);
 #endif
 
     return 0;

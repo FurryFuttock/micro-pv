@@ -110,7 +110,7 @@ start_info_t hypervisor_start_info;
   -- public functions
   ---------------------------------------------------------------------*/
 
-void printk(const char *file, long line, const char *format, ...)
+void micropv_printk(const char *file, long line, const char *format, ...)
 {
     va_list args;
     int message_length;

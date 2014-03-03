@@ -224,7 +224,7 @@ void xenevents_init(void)
     HYPERVISOR_set_callbacks((unsigned long)hypervisor_callback, (unsigned long)failsafe_callback, 0);
 }
 
-void xenevents_cli(void)
+void micropv_interrupt_disable(void)
 {
     // mask events
     barrier();
@@ -232,7 +232,7 @@ void xenevents_cli(void)
     barrier();
 }
 
-void xenevents_sti(void)
+void micropv_interrupt_enable(void)
 {
     // unmask events
     barrier();
@@ -241,6 +241,6 @@ void xenevents_sti(void)
 
     // force channel event (if there is one)
     if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
-        HYPERVISOR_xen_version(0, NULL); 
+        HYPERVISOR_xen_version(0, NULL);
 }
 

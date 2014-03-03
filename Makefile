@@ -43,7 +43,7 @@ all : $(OUTPUT).o
 #-- 2.- Rewrite the object file keeping the minimum symbols as global. This doesn't affect debugging as the debug info is not removed.
 $(OUTPUT).o: $(OBJ_ASM) $(OBJ_C)
 	$(LD) -r -m elf_x86_64 -o $@ $^
-	objcopy -w -G xenos_* -G _start -G do_exit -G xenconsole_*  -G xentime_* -G xenevents_* -G xentraps_* -G printk -G stack $@ $@
+	objcopy -w -G _start -G do_exit -G micropv_* -G printk -G stack $@ $@
 
 clean:
 	rm -f $(OBJ_C) $(OBJ_ASM) $(OUTPUT).o $(OUTPUT).map

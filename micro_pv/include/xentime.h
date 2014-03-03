@@ -36,7 +36,6 @@
   -- function prototypes
   ---------------------------------------------------------------------*/
 void xentime_init(void);
-int xentime_gettimeofday(struct timeval *tv, void *tz);
 
 /*---------------------------------------------------------------------
   -- global variables

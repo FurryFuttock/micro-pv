@@ -67,7 +67,7 @@ void machine_check(void);
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
-uint64_t(*xentraps_fp_context)(struct pt_regs *regs) = NULL;
+uint64_t(*micropv_traps_fp_context)(struct pt_regs *regs) = NULL;
 
 /*---------------------------------------------------------------------
   -- local variables
@@ -214,8 +214,8 @@ void do_invalid_op(struct pt_regs *regs)                    { PRINTK("%s\n", __F
 void do_device_not_available(struct pt_regs *regs)
 {
     // if we have a function to handle this then call it
-    if (xentraps_fp_context)
-        xentraps_fp_context(regs);
+    if (micropv_traps_fp_context)
+        micropv_traps_fp_context(regs);
     // we don't have a handler so crash
     else
     {

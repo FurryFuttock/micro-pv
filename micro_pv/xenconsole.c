@@ -101,12 +101,12 @@ static int xenconsole_ring_send(struct xencons_interface *ring, evtchn_port_t po
     return sent;
 }
 
-int xenconsole_write(const void *ptr, size_t len)
+int micropv_console_write(const void *ptr, size_t len)
 {
     return xenconsole_ring_send(xenconsole_interface(), xenconsole_event(), ptr, len);
 }
 
-int xenconsole_write_available()
+int micropv_console_write_available()
 {
     struct xencons_interface *ring = xenconsole_interface();
     return (ring->out_prod - ring->out_cons - 1) & (sizeof(ring->out) - 1);
@@ -132,7 +132,7 @@ int xenconsole_printf(const char *format, ...)
         va_end(args);
 
         // send to the console
-        xenconsole_write(message, length);
+        micropv_console_write(message, length);
     }
 
     return length;
@@ -158,7 +158,7 @@ static void xenconsole_event_handler(evtchn_port_t port, struct pt_regs *regs, v
 #endif
 }
 
-int xenconsole_read(void *ptr, size_t len)
+int micropv_console_read(void *ptr, size_t len)
 {
     int received = 0;
     XENCONS_RING_IDX cons, prod;
@@ -177,7 +177,7 @@ int xenconsole_read(void *ptr, size_t len)
     return received;
 }
 
-int xenconsole_read_available()
+int micropv_console_read_available()
 {
     struct xencons_interface *ring = xenconsole_interface();
     return (ring->in_cons - ring->in_prod) & (sizeof(ring->in) - 1);

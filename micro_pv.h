@@ -13,7 +13,7 @@
 /*---------------------------------------------------------------------
   -- macros (preamble)
   ---------------------------------------------------------------------*/
-#define PRINTK(format...) printk(__FILE__, __LINE__, ##format)
+#define PRINTK(format...) micropv_printk(__FILE__, __LINE__, ##format)
 
 /*---------------------------------------------------------------------
   -- standard includes
@@ -91,15 +91,14 @@ enum xen_register_file
 /**
  * Simulate a processor CLI. Internally this just disables hypervisor events.
  */
-void xenevents_cli(void);
+void micropv_interrupt_disable(void);
 
 /**
  * Simulate a processor STI. Internally this just enables hypervisor events.
  */
-void xenevents_sti(void);
+void micropv_interrupt_enable(void);
 
-
-// --------- TIME FUNCTIONS
+// --------- SCHEDULER FUNCTIONS
 /**
  * Initialise a stack context. This is analogous to thread.
  *
@@ -109,18 +108,19 @@ void xenevents_sti(void);
  * @param stack_size Size of the stack. For x86 platforms the stack grows down so we
  *                   have to initialise the stack pointer to stack_ptr + stack_size.
  */
-void xentime_initialise_context(struct pt_regs *regs, void *start_ptr, void *stack_ptr, int stack_size);
+void micropv_scheduler_initialise_context(struct pt_regs *regs, void *start_ptr, void *stack_ptr, int stack_size);
 
 /**
  * Release the CPU.
  */
-void xentime_yield(void);
+void micropv_scheduler_yield(void);
 
 /**
  * Release the CPU and block the domain until the next event.
  */
-void xentime_block(void);
+void micropv_scheduler_block(void);
 
+// --------- TIME FUNCTIONS
 /**
  * Return the current time of day. This is real time, not machine time,
  * and is kept in sync with the HyperVisor.
@@ -130,14 +130,14 @@ void xentime_block(void);
  *
  * @return 0 if successful.
  */
-int xentime_gettimeofday(struct timeval *tv, void *tz);
+int micropv_time_gettimeofday(struct timeval *tv, void *tz);
 
 /**
  * Nanosecond timer. Guaranteed? to always increment.
  *
- * @return nano seconds since start of epoch
+ * @return nano seconds since virtual machine was started
  */
-uint64_t xentime_monotonic_clock(void);
+uint64_t micropv_time_monotonic_clock(void);
 
 // --------- CONSOLE IO FUNCTIONS
 
@@ -151,21 +151,21 @@ uint64_t xentime_monotonic_clock(void);
  *               builtin __LINE__ macro.
  * @param format The standard print format to be applied to the following parameters
  */
-void printk(const char *file, long line, const char *format, ...) __attribute__((format (printf, 3, 4)));
+void micropv_printk(const char *file, long line, const char *format, ...) __attribute__((format (printf, 3, 4)));
 
 /**
  * Check whether there is anything in the Xen console read buffer that can be read.
  *
  * @return The number of bytes available to be read.
  */
-int xenconsole_read_available();
+int micropv_console_read_available();
 
 /**
  * Check whether there is room available in the Xen console transmit buffer to send data.
  *
  * @return The number of bytes available to be written.
  */
-int xenconsole_write_available();
+int micropv_console_write_available();
 
 /**
  * Read the available bytes in the buffer. This DOES NOT block, if there
@@ -176,7 +176,7 @@ int xenconsole_write_available();
  *
  * @return The number of bytes written to the output buffer.
  */
-int xenconsole_read(void *ptr,  size_t len);
+int micropv_console_read(void *ptr, size_t len);
 
 /**
  * Write the data from the input buffer to the Xen console buffer. This
@@ -188,7 +188,7 @@ int xenconsole_read(void *ptr,  size_t len);
  *
  * @return The number of bytes written to the console.
  */
-int xenconsole_write(const void *ptr, size_t len);
+int micropv_console_write(const void *ptr, size_t len);
 
 /*---------------------------------------------------------------------
   -- global variables
@@ -202,7 +202,7 @@ int xenconsole_write(const void *ptr, size_t len);
  *
  * @return The timer interrupt period in nanoseconds.
  */
-extern uint64_t (*xentime_irq)(struct pt_regs *regs);
+extern uint64_t (*micropv_scheduler_callback)(struct pt_regs *regs);
 
 /**
  * This is the register where the overlying operating system must store the
@@ -212,7 +212,7 @@ extern uint64_t (*xentime_irq)(struct pt_regs *regs);
  *
  * @return Ignored
  */
-extern uint64_t (*xentraps_fp_context)(struct pt_regs *regs);
+extern uint64_t (*micropv_traps_fp_context)(struct pt_regs *regs);
 
 /*---------------------------------------------------------------------
   -- local variables
