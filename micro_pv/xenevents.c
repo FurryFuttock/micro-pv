@@ -91,7 +91,7 @@ void do_exit(void)
     }
 }
 
-void force_evtchn_callback(void)
+static void force_evtchn_callback(void)
 {
     int save;
     vcpu_info_t *vcpu;
@@ -116,6 +116,13 @@ static void default_handler(evtchn_port_t port, struct pt_regs *regs, void *igno
 
 evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *data)
 {
+    // sanity check
+    if ((port < 0) || (port >= NUM_CHANNELS))
+    {
+        PRINTK("ERROR: Handler for port %d already registered, replacing\n", port);
+        return -1;
+    }
+
     if (ev_actions[port].handler != default_handler)
         PRINTK("WARN: Handler for port %d already registered, replacing\n", port);
 
@@ -144,10 +151,37 @@ evtchn_port_t bind_virq(uint32_t virq, evtchn_handler_t handler, void *data)
     return op.port;
 }
 
-static inline void clear_evtchn(uint32_t port)
+static void clear_evtchn(uint32_t port)
 {
     shared_info_t *s = hypervisor_shared_info;
     synch_clear_bit(port, &s->evtchn_pending[0]);
+}
+
+static void mask_evtchn(uint32_t port)
+{
+    shared_info_t *s = hypervisor_shared_info;
+    synch_set_bit(port, &s->evtchn_mask[0]);
+}
+
+static void unmask_evtchn(uint32_t port)
+{
+    shared_info_t *s = hypervisor_shared_info;
+    vcpu_info_t *vcpu_info = &s->vcpu_info[smp_processor_id()];
+
+    PRINTK("unmask port %d\n", port);
+    synch_clear_bit(port, &s->evtchn_mask[0]);
+
+    /*
+     * The following is basically the equivalent of 'hw_resend_irq'. Just like
+     * a real IO-APIC we 'lose the interrupt edge' if the channel is masked.
+     */
+    if (synch_test_bit(port, &s->evtchn_pending[0]) &&
+        !synch_test_and_set_bit(port / (sizeof(unsigned long) * 8), &vcpu_info->evtchn_pending_sel))
+    {
+        vcpu_info->evtchn_upcall_pending = 1;
+        if (!vcpu_info->evtchn_upcall_mask)
+            force_evtchn_callback();
+    }
 }
 
 static int do_event(evtchn_port_t port, struct pt_regs *regs)
@@ -222,6 +256,30 @@ void xenevents_init(void)
 
     /* Set the event delivery callbacks */
     HYPERVISOR_set_callbacks((unsigned long)hypervisor_callback, (unsigned long)failsafe_callback, 0);
+}
+
+evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t handler)
+{
+    evtchn_port_t port = bind_virq(virq, handler, NULL);
+    if (port == -1)
+    {
+        PRINTK("Error initialising VIRQ %i", virq);
+        return -1;
+    }
+    unmask_evtchn(port);
+    return port;
+}
+
+evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler)
+{
+    evtchn_port_t port = bind_evtchn(channel, handler, NULL);
+    if (-1 == port)
+    {
+        PRINTK("Error initialising channel %i", channel);
+        return -1;
+    }
+    unmask_evtchn(port);
+    return port;
 }
 
 void micropv_interrupt_disable(void)

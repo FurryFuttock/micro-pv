@@ -14,7 +14,6 @@
 /*---------------------------------------------------------------------
   -- standard includes
   ---------------------------------------------------------------------*/
-#include <sys/time.h>
 
 /*---------------------------------------------------------------------
   -- project includes (import)
@@ -35,7 +34,36 @@
 /*---------------------------------------------------------------------
   -- function prototypes
   ---------------------------------------------------------------------*/
+/**
+ * Initialise the hypervisor time interface
+ */
 void xentime_init(void);
+
+/**
+ * Stop the periodic timer on this VCPU. The periodic timer is a low resolution
+ * low priority event. It was suggested by the Xen maillist that we should
+ * be using the single shot timer instead.
+ *
+ * @return 0 on success, other on error
+ */
+int xentime_stop_periodic(void);
+
+/**
+ * Set the deadline for the next single shot timer event. We cannot guarantee
+ * when this will happen. It all depends on what is going on in the hypervisor
+ * at the time.
+ *
+ * @param timer_deadline
+ *               Absolute time in nanoseconds of the next deadline
+ *
+ * @return 0 on success, other on error
+ */
+int xentime_set_next_event(uint64_t timer_deadline);
+
+/**
+ * Update the wallclock
+ */
+void xentime_update(void);
 
 /*---------------------------------------------------------------------
   -- global variables

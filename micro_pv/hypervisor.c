@@ -33,6 +33,7 @@
 #include "xenconsole.h"
 #include "xenstore.h"
 #include "xentime.h"
+#include "xengnttab.h"
 
 /*---------------------------------------------------------------------
   -- project includes (export)
@@ -64,27 +65,6 @@ static void hypervisor_setup_xen_features(void);
  */
 static void *hypervisor_map_page(unsigned long guest_address, unsigned long long machine_address);
 
-#if HYPERVISOR_PRODUCE_RING_BUFFER == 1
-/**
- * Publish a shared page.
- */
-static void hypervisor_produce_ring_buffer();
-#endif
-
-#if HYPERVISOR_CONSUME_RING_BUFFER == 1
-/**
- * Consume a page offered by another VM
- *
- * @param dom_friend
- * @param entry
- * @param shared_page
- * @param handle
- *
- * @return
- */
-static grant_handle_t hypervisor_consume_ring_buffer(domid_t dom_friend, unsigned int entry, void *ring_buffer, grant_handle_t *handle);
-#endif
-
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
@@ -92,10 +72,6 @@ uint8_t xen_features[XENFEAT_NR_SUBMAPS * 32];
 
 extern char shared_info[__PAGE_SIZE];
 shared_info_t *hypervisor_shared_info;
-
-#if HYPERVISOR_PRODUCE_RING_BUFFER == 1
-grant_entry_v2_t grant_table[1];
-#endif
 
 /*---------------------------------------------------------------------
   -- local variables
@@ -198,63 +174,15 @@ void hypervisor_start(start_info_t *si)
     // initialise the time interface
     xentime_init();
 
-#if HYPERVISOR_PRODUCE_RING_BUFFER == 1
-    // let's offer up our transfer page
-    hypervisor_produce_ring_buffer();
-#endif
-
     // initialise the xenstore interface
     xenstore_init();
+
+    // initialise the mapped memory
+    xengnttab_init();
+
+    // initialise the scheduler
+    xenscheduler_init();
 }
-
-#if HYPERVISOR_CONSUME_RING_BUFFER == 1
-grant_handle_t hypervisor_consume_ring_buffer(domid_t dom_friend, unsigned int entry, void *shared_page, grant_handle_t *handle)
-{
-    /* Set up the mapping operation */
-    gnttab_map_grant_ref_t map_op;
-    map_op.host_addr = (uint64_t)shared_page;
-    map_op.flags = GNTMAP_host_map;
-    map_op.ref = entry;
-    map_op.dom = dom_friend;
-
-    /* Perform the map */
-    HYPERVISOR_grant_table_op(GNTTABOP_map_grant_ref, &map_op, 1);
-
-    /* Check if it worked */
-    if (map_op.status != GNTST_okay)
-    {
-        return -1;
-    }
-    else
-    {
-        /* Return the handle */
-        *handle = map_op.handle;
-        return 0;
-    }
-}
-#endif
-
-#if HYPERVISOR_PRODUCE_RING_BUFFER == 1
-void hypervisor_produce_ring_buffer()
-{
-    uint16_t flags;
-    /* Create the grant table */
-    gnttab_setup_table_t setup_op;
-
-    setup_op.dom = DOMID_SELF;
-    setup_op.nr_frames = 1;
-    setup_op.status = GNTST_okay;
-    setup_op.frame_list = (void*)grant_table;
-
-    HYPERVISOR_grant_table_op(GNTTABOP_setup_table, &setup_op, 1);
-
-    /* Offer the grant */
-    grant_table[0].domid = 0;
-    grant_table[0].frame = (uint64_t)ring_buffer >> 12;
-    flags = GTF_permit_access & GTF_reading & GTF_writing;
-    grant_table[0].flags = flags;
-}
-#endif
 
 void *hypervisor_map_page(unsigned long guest_address, unsigned long long machine_address)
 {

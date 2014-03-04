@@ -4,7 +4,7 @@
 #include "arch_limits.h"
 
 #define ENTRY(X) .globl X ; X :
-.globl _start, shared_info, hypercall_page, ring_buffer
+.globl _start, shared_info, hypercall_page
 
 .section __xen_guest
     .ascii  "GUEST_OS=Hacking_Xen_Example"
@@ -35,9 +35,6 @@ shared_info:
 
 hypercall_page:
     .org 0x3000
-
-ring_buffer:
-    .org 0x4000
 
 #define evtchn_upcall_pending       /* 0 */
 #define evtchn_upcall_mask      1

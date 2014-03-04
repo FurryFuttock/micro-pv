@@ -50,6 +50,7 @@ static void xenconsole_event_handler(evtchn_port_t port, struct pt_regs *regs, v
 /*---------------------------------------------------------------------
   -- local variables
   ---------------------------------------------------------------------*/
+static evtchn_port_t port = -1;
 
 /*---------------------------------------------------------------------
   -- private functions
@@ -94,7 +95,7 @@ static int xenconsole_ring_send(struct xencons_interface *ring, evtchn_port_t po
     do
     {
         sent += xenconsole_ring_send_no_notify(ring, data, len);
-        notify_remote_via_evtchn(port);
+        xenevents_notify_remote_via_evtchn(port);
     }
     while (sent < len);
 
@@ -195,16 +196,16 @@ int xenconsole_init(void)
     if (!xenconsole_event())
         return 0;
 
-    int err = bind_evtchn(xenconsole_event(), xenconsole_event_handler, NULL);
-    if (err <= 0)
+    // bind to the console event channel
+    port = xenevents_bind_channel(xenconsole_event(), xenconsole_event_handler);
+    if (port == -1)
     {
-        PRINTK("XEN console request chn bind failed %i\n", err);
+        PRINTK("XEN console channel bind failed");
         return -1;
     }
-    unmask_evtchn(xenconsole_event());
 
     /* In case we have in-flight data after save/restore... */
-    notify_remote_via_evtchn(xenconsole_event());
+    xenevents_notify_remote_via_evtchn(xenconsole_event());
 
     return 0;
 }

@@ -14,6 +14,7 @@
   -- macros (preamble)
   ---------------------------------------------------------------------*/
 #define PRINTK(format...) micropv_printk(__FILE__, __LINE__, ##format)
+#define MICROPV_SHARED_PAGES 10
 
 /*---------------------------------------------------------------------
   -- standard includes
@@ -189,6 +190,28 @@ int micropv_console_read(void *ptr, size_t len);
  * @return The number of bytes written to the console.
  */
 int micropv_console_write(const void *ptr, size_t len);
+
+//--- SHARED MEMORY
+/**
+ * Publish a shared page. The page MUST be one complete processor page.
+ *
+ * @param buffer Address of the memory to be shared. This must be a pointer to a processor page.
+ */
+void micropv_shared_memory_publish(void *buffer, int readonly);
+
+#if 0
+/**
+ * Consume a page offered by another VM
+ *
+ * @param dom_friend
+ * @param entry
+ * @param shared_page
+ * @param handle
+ *
+ * @return
+ */
+static grant_handle_t hypervisor_consume_ring_buffer(domid_t dom_friend, unsigned int entry, void *ring_buffer, grant_handle_t *handle);
+#endif
 
 /*---------------------------------------------------------------------
   -- global variables

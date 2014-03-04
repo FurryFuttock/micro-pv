@@ -54,6 +54,7 @@
 static int xenstore_req_id = 0;
 static char xenstore_dump[XENSTORE_RING_SIZE] = { 0 };
 static char hypervisor_domid[6];
+static evtchn_port_t port = -1;
 
 /*---------------------------------------------------------------------
   -- private functions
@@ -143,7 +144,7 @@ int xenstore_transact(coroutine_context_t *coroutine_context, const void *reques
     COROUTINE_END;
 
     // notify the back end
-    notify_remote_via_evtchn(xenstore_event());
+    xenevents_notify_remote_via_evtchn(xenstore_event());
 
     // read the response header
     struct xsd_sockmsg msg = { 0 };
@@ -375,16 +376,16 @@ int xenstore_init(void)
     if (!xenstore_event())
         return 0;
 
-    int err = bind_evtchn(xenstore_event(), xenstore_event_handler, NULL);
-    if (err <= 0)
+    // bind to the xenstore event channel
+    port = xenevents_bind_channel(xenstore_event(), xenstore_event_handler);
+    if (port == -1)
     {
-        PRINTK("XEN console request chn bind failed %i\n", err);
+        PRINTK("XEN store channel bind failed");
         return -1;
     }
-    unmask_evtchn(xenstore_event());
 
     /* In case we have in-flight data after save/restore... */
-    notify_remote_via_evtchn(xenstore_event());
+    xenevents_notify_remote_via_evtchn(xenstore_event());
 
     // get my domain id
     size_t domid_length = 0;

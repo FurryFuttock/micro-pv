@@ -56,12 +56,9 @@ struct shadow_time_info {
 /*---------------------------------------------------------------------
   -- local variables
   ---------------------------------------------------------------------*/
-static evtchn_port_t port = -1;
 static struct shadow_time_info shadow = { 0 };
 static uint32_t shadow_ts_version = 0;
 static struct timespec shadow_ts = { 0 };
-static uint64_t timer_deadline = 0;
-static uint64_t timer_period = TIMER_PERIOD;
 
 /*---------------------------------------------------------------------
   -- private functions
@@ -133,63 +130,6 @@ static inline int time_values_up_to_date(void)
     return (shadow.version == src->version);
 }
 
-static int timer_set_next_event()
-{
-    int cpu = smp_processor_id();
-    struct vcpu_set_singleshot_timer single;
-    int ret;
-
-    single.timeout_abs_ns = timer_deadline;
-    single.flags = VCPU_SSHOTTMR_future;
-
-    ret = HYPERVISOR_vcpu_op(VCPUOP_set_singleshot_timer, cpu, &single);
-
-    return ret;
-}
-
-static int timer_stop_periodic()
-{
-    int cpu = smp_processor_id();
-    int ret;
-
-    ret = HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, cpu, NULL);
-
-    return ret;
-}
-
-static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
-{
-    // set the next timer interrupt event. this must be in the fugure
-    do timer_deadline += timer_period;
-    while (timer_deadline < micropv_time_monotonic_clock());
-
-    // set the next timer event
-    timer_set_next_event();
-
-    // housekeeping
-    get_time_values_from_xen();
-    update_wallclock();
-
-    // store the current stack data
-    unsigned long rsp = regs->rsp;
-    unsigned long ss = regs->ss;
-
-    // call the guest OS handler. The guest returns the time to the next interrupt,
-    // and will alter the register file if it want's to perform a context switch.
-    timer_period = micropv_scheduler_callback(regs);
-
-    // if the timer irq changed the stack then apply the changes
-    if ((rsp != regs->rsp) || (ss != regs->ss))
-    {
-        // switch stacks in the hypervisor
-        HYPERVISOR_stack_switch(regs->ss, regs->rsp);
-
-        // set CR0.TS so that the next time that there is an SSE (floating point) access
-        // we get a device_disabled trap
-        HYPERVISOR_fpu_taskswitch(1);
-    }
-}
-
 /*---------------------------------------------------------------------
   -- public functions
   ---------------------------------------------------------------------*/
@@ -232,24 +172,37 @@ void xentime_init(void)
 {
     PRINTK("Initialising timer interface\n");
 
-    // disable the periodic timer event
-    timer_stop_periodic();
-
-    // bind the timer virtual IRQ
-    port = bind_virq(VIRQ_TIMER, &timer_handler, NULL);
-    if (-1 == port)
-    {
-        PRINTK("Error initialising VIRQ_TIMER");
-        return;
-    }
-    unmask_evtchn(port);
-
     // initialise the time
     get_time_values_from_xen();
     update_wallclock();
-
-    // initialise the periodic timer
-    timer_deadline = micropv_time_monotonic_clock() + timer_period;
-    timer_set_next_event();
 }
 
+int xentime_stop_periodic()
+{
+    int cpu = smp_processor_id();
+    int ret;
+
+    ret = HYPERVISOR_vcpu_op(VCPUOP_stop_periodic_timer, cpu, NULL);
+
+    return ret;
+}
+
+int xentime_set_next_event(uint64_t timer_deadline)
+{
+    int cpu = smp_processor_id();
+    struct vcpu_set_singleshot_timer single;
+    int ret;
+
+    single.timeout_abs_ns = timer_deadline;
+    single.flags = VCPU_SSHOTTMR_future;
+
+    ret = HYPERVISOR_vcpu_op(VCPUOP_set_singleshot_timer, cpu, &single);
+
+    return ret;
+}
+
+void xentime_update()
+{
+    get_time_values_from_xen();
+    update_wallclock();
+}

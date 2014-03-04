@@ -10,8 +10,6 @@
 /*---------------------------------------------------------------------
   -- macros
   ---------------------------------------------------------------------*/
-#define HYPERVISOR_PRODUCE_RING_BUFFER  (0)
-#define HYPERVISOR_CONSUME_RING_BUFFER  (0)
 
 /*---------------------------------------------------------------------
   -- standard includes
@@ -50,9 +48,6 @@ void hypervisor_start(start_info_t *si);
   ---------------------------------------------------------------------*/
 extern start_info_t hypervisor_start_info;
 extern shared_info_t *hypervisor_shared_info;
-#if HYPERVISOR_PRODUCE_RING_BUFFER == 1
-extern char ring_buffer[__PAGE_SIZE];
-#endif
 
 /*---------------------------------------------------------------------
   -- local variables

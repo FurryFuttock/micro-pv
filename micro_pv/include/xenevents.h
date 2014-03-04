@@ -55,11 +55,30 @@ typedef void (*evtchn_handler_t)(evtchn_port_t, struct pt_regs*, void*);
 /*---------------------------------------------------------------------
   -- function prototypes
   ---------------------------------------------------------------------*/
+/**
+ * Initialise the Xen event interface.
+ */
 void xenevents_init(void);
-evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *data);
-evtchn_port_t bind_virq(uint32_t virq, evtchn_handler_t handler, void *data);
-void do_exit(void);
-void force_evtchn_callback(void);
+
+/**
+ * Bind a function to VIRQ event.
+ *
+ * @param virq    Xen VIRQ
+ * @param handler Function to be bound
+ *
+ * @return -1 if falure, otherwise the associted port number
+ */
+evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t handler);
+
+/**
+ * Bind a function to an event channel.
+ *
+ * @param channel Xen event channel
+ * @param handler Function to be bound
+ *
+ * @return -1 if falure, otherwise the associted port number
+ */
+evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler);
 
 /*---------------------------------------------------------------------
   -- global variables
@@ -76,38 +95,13 @@ void force_evtchn_callback(void);
 /*---------------------------------------------------------------------
   -- public functions
   ---------------------------------------------------------------------*/
-
-static inline int notify_remote_via_evtchn(evtchn_port_t port)
+/**
+ * Initialise the Xen event interface.
+ */
+static inline int xenevents_notify_remote_via_evtchn(evtchn_port_t port)
 {
     evtchn_send_t op;
     op.port = port;
     return HYPERVISOR_event_channel_op(EVTCHNOP_send, &op);
-}
-
-static inline void mask_evtchn(uint32_t port)
-{
-    shared_info_t *s = hypervisor_shared_info;
-    synch_set_bit(port, &s->evtchn_mask[0]);
-}
-
-static inline void unmask_evtchn(uint32_t port)
-{
-    shared_info_t *s = hypervisor_shared_info;
-    vcpu_info_t *vcpu_info = &s->vcpu_info[smp_processor_id()];
-
-    PRINTK("unmask port %d\n", port);
-    synch_clear_bit(port, &s->evtchn_mask[0]);
-
-    /*
-     * The following is basically the equivalent of 'hw_resend_irq'. Just like
-     * a real IO-APIC we 'lose the interrupt edge' if the channel is masked.
-     */
-    if (synch_test_bit(port, &s->evtchn_pending[0]) &&
-        !synch_test_and_set_bit(port / (sizeof(unsigned long) * 8), &vcpu_info->evtchn_pending_sel))
-    {
-        vcpu_info->evtchn_upcall_pending = 1;
-        if (!vcpu_info->evtchn_upcall_mask)
-            force_evtchn_callback();
-    }
 }
 
