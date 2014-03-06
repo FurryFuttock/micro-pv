@@ -731,6 +731,7 @@ typedef union {
 int pvsnfmt_double(char **pinsertion, size_t *nmax, const char fmt, int flags,
                 int width, int precision, char prefix, va_list ap)
 {
+#if HAVE_FCVT
     char *digits;
     int sign = 0;
     int dec;
@@ -841,7 +842,6 @@ int pvsnfmt_double(char **pinsertion, size_t *nmax, const char fmt, int flags,
         return totallen;
     }
 
-#if 0 // NEED TO IMPLEMENT fcvt
     if (fmt == 'f')
     {
         if (precision == UNKNOWN_PRECISION)
