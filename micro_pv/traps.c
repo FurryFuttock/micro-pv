@@ -276,7 +276,7 @@ void do_machine_check(struct pt_regs *regs)                 { PRINTK("%s\n", __F
  * can trap to that vector using a software-interrupt instruction (INT).
  */
 
-void hypervisor_trap_init(void)
+void xentraps_init(void)
 {
     HYPERVISOR_set_trap_table(trap_table);
 }
