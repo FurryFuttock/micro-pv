@@ -14,7 +14,6 @@
   -- macros (preamble)
   ---------------------------------------------------------------------*/
 #define PRINTK(format...) micropv_printk(__FILE__, __LINE__, ##format)
-#define MICROPV_SHARED_PAGES 10
 
 /*---------------------------------------------------------------------
   -- standard includes
@@ -193,11 +192,14 @@ int micropv_console_write(const void *ptr, size_t len);
 
 //--- SHARED MEMORY
 /**
- * Publish a shared page. The page MUST be one complete processor page.
+ * Publish a shared page. The page MUST be one complete processor page, i.e.
+ * declare as char __atribute__((aligned(4096)).
  *
- * @param buffer Address of the memory to be shared. This must be a pointer to a processor page.
+ * @param name     Name that will appear in the Xen store.
+ * @param buffer   Address of the memory to be shared. This must be a pointer to a processor page.
+ * @param readonly 0 => read/write access to the shared page, otherwise read only acccess.
  */
-void micropv_shared_memory_publish(void *buffer, int readonly);
+void micropv_shared_memory_publish(const char *name, const void *buffer, int readonly);
 
 #if 0
 /**

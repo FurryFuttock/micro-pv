@@ -136,7 +136,7 @@ void micropv_scheduler_block()
     HYPERVISOR_sched_op(SCHEDOP_block, 0);
 }
 
-void xenscheduler_init()
+void xenscheduler_init(void)
 {
     // disable the periodic timer event
     xentime_stop_periodic();

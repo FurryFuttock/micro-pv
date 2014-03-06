@@ -34,6 +34,8 @@
 #include "xenstore.h"
 #include "xentime.h"
 #include "xengnttab.h"
+#include "xenmmu.h"
+#include "xenschedule.h"
 
 /*---------------------------------------------------------------------
   -- project includes (export)
@@ -52,18 +54,6 @@
   -- function prototypes
   ---------------------------------------------------------------------*/
 static void hypervisor_setup_xen_features(void);
-
-/**
- * Map a physical page into the machine memory space
- *
- * @param guest_address
- *               Page address in the virtual machine.
- * @param machine_address
- *               Page address in the physical memory.
- *
- * @return Pointer to the address of the page in the virtual machine.
- */
-static void *hypervisor_map_page(unsigned long guest_address, unsigned long long machine_address);
 
 /*---------------------------------------------------------------------
   -- global variables
@@ -155,17 +145,21 @@ void hypervisor_start(start_info_t *si)
     // store the startup information. This is passed in as a parameter to the _start function by the hypervisor.
     memcpy(&hypervisor_start_info, si, sizeof(hypervisor_start_info));
 
-    // setup featers
+    // setup featers -- this is used by the hypervisor trap (see bootstrap.???.S)
     hypervisor_setup_xen_features();
 
-    // initialise the traps
-    hypervisor_trap_init();
+    // initialise the traps -- this is now safe because we have the xen features
+    xentraps_init();
+
+    // initialise memory management
+    xenmmu_init();
 
     // let's map the shared info page into our memory map. Here we use the shared_info data area we defined
     // in bootstrap.<arch>.S
-    hypervisor_shared_info = hypervisor_map_page((unsigned long)&shared_info, hypervisor_start_info.shared_info);
+    hypervisor_shared_info = xenmmu_remap_page((unsigned long)&shared_info, hypervisor_start_info.shared_info, 0);
+    BUG_ON(hypervisor_shared_info == NULL);
 
-    // initialise the event interface
+    // initialise the event interface -- activates the hypervisor callbacks
     xenevents_init();
 
     // initialise the console interface
@@ -182,11 +176,5 @@ void hypervisor_start(start_info_t *si)
 
     // initialise the scheduler
     xenscheduler_init();
-}
-
-void *hypervisor_map_page(unsigned long guest_address, unsigned long long machine_address)
-{
-    HYPERVISOR_update_va_mapping(guest_address, __pte(machine_address | 7), UVMF_INVLPG);
-    return (void*)guest_address;
 }
 

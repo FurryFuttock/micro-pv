@@ -21,6 +21,11 @@
 
     The hypervisor assigns storage for an array of grant_entry_t.
 
+    #### TODO ####
+    In the Linux implementation grant_entry_t AND grant_status_t arrays are created and mapped into VM memory.
+    Not sure what is going on here though.
+    #### TODO ####
+
     1.- Call HYPERVISOR_grant_table_op GNTTABOP_setup_table to assign the grant_entry_t table. I seem to remember seeing somewhere
         that there is a minimum of 4 pages required. The frame element of the setup table parameter will return the machine frame
         numbers of the allocated pages.
@@ -38,10 +43,11 @@
     Phase 2 - Granting
     ------------------
 
-    The VM fills in entries in the grant_entry_t array.
+    The VM fills in entries in the grant_entry_t array to produce the share.
 
-    1.-
+    1.- The frame number and domid are written to the grant_entry_t
 
+    2.- The flags are written. The page will be shared once the flags are written.
 
     Modifications
     0.00 3/3/2014 created
@@ -63,6 +69,9 @@
   ---------------------------------------------------------------------*/
 #include "hypercall.h"
 #include "../micro_pv.h"
+#include "xenmmu.h"
+#include "xenevents.h"
+#include "xenstore.h"
 
 /*---------------------------------------------------------------------
   -- project includes (exports)
@@ -72,6 +81,9 @@
 /*---------------------------------------------------------------------
   -- macros (postamble)
   ---------------------------------------------------------------------*/
+#define NR_RESERVED_ENTRIES 8
+#define NR_GRANT_FRAMES 4
+#define NR_GRANT_ENTRIES (NR_GRANT_FRAMES * __PAGE_SIZE / sizeof(grant_entry_v2_t))
 
 /*---------------------------------------------------------------------
   -- forward declarations
@@ -80,6 +92,7 @@
 /*---------------------------------------------------------------------
   -- data types
   ---------------------------------------------------------------------*/
+typedef grant_ref_t uint32_t;
 
 /*---------------------------------------------------------------------
   -- function prototypes
@@ -92,11 +105,34 @@
 /*---------------------------------------------------------------------
   -- local variables
   ---------------------------------------------------------------------*/
-static grant_entry_v2_t grant_table[MICROPV_SHARED_PAGES];
+static char grant_table_pages[NR_GRANT_FRAMES][__PAGE_SIZE] __attribute__((aligned(__PAGE_SIZE)));
+static grant_entry_v2_t *gnttab_table = (grant_entry_v2_t *)grant_table_pages;
+static grant_ref_t gnttab_list[NR_GRANT_ENTRIES] = {0};
 
 /*---------------------------------------------------------------------
   -- implementation
   ---------------------------------------------------------------------*/
+
+static void put_free_entry(grant_ref_t ref)
+{
+    micropv_interrupt_disable();
+    gnttab_list[ref] = gnttab_list[0];
+    gnttab_list[0]  = ref;
+    micropv_interrupt_enable();
+}
+
+static grant_ref_t get_free_entry(void)
+{
+    unsigned int ref;
+
+    micropv_interrupt_disable();
+    ref = gnttab_list[0];
+    BUG_ON(ref < NR_RESERVED_ENTRIES || ref >= NR_GRANT_ENTRIES);
+    gnttab_list[0] = gnttab_list[ref];
+    micropv_interrupt_enable();
+
+    return ref;
+}
 
 grant_handle_t micropv_shared_memory_consume(domid_t dom_friend, unsigned int entry, void *shared_page, grant_handle_t *handle)
 {
@@ -123,42 +159,48 @@ grant_handle_t micropv_shared_memory_consume(domid_t dom_friend, unsigned int en
     }
 }
 
-void micropv_shared_memory_publish(void *buffer, int readonly)
+void micropv_shared_memory_publish(const char *name, const void *buffer, int readonly)
 {
-#if 0
-    int dom = 0;
-    uint64_t mfn = buffer;
-    gnttab_grant_foreign_access( domBid, mfn, (readonly ? 1 : 0) );
-#elif 0
-    gnttab_grant_foreign_access
-    uint16_t flags;
-    uint64_t frames[1];
+    uint64_t mfn = virt_to_mfn(buffer);
 
-    /* Offer the grant */
-    grant_table[0].domid = 0;
-    grant_table[0].frame = (uint64_t)buffer >> 12;
-    flags = GTF_permit_access & GTF_reading & GTF_writing;
-    grant_table[0].flags = flags;
-#endif
+    // get the index of the next available grant entry
+    grant_ref_t ref = get_free_entry();
+    PRINTK("buffer=%p ref=%i", buffer, ref);
+
+    // set the grant data
+    gnttab_table[ref].full_page.frame = mfn;
+    gnttab_table[ref].full_page.hdr.domid = 0;
+    wmb();
+    gnttab_table[ref].full_page.hdr.flags = GTF_permit_access | (readonly ? GTF_readonly : 0);
+
+    // publish this shared page in the xenstore
+    xenstore_publish(name, mfn);
 }
 
 int xengnttab_init()
 {
+    // initialise the grant access list
+    for (int i = NR_RESERVED_ENTRIES; i < NR_GRANT_ENTRIES; i++)
+        put_free_entry(i);
+
     /* Create the grant table */
     gnttab_setup_table_t setup_op;
-    uint64_t table_frames[MICROPV_SHARED_PAGES];
-    //uint64_t status_frames[MICROPV_SHARED_PAGES];
+    uint64_t table_frames[NR_GRANT_FRAMES] = {0};
     setup_op.dom = DOMID_SELF;
-    setup_op.nr_frames = MICROPV_SHARED_PAGES;
+    setup_op.nr_frames = NR_GRANT_FRAMES;
     set_xen_guest_handle(setup_op.frame_list, table_frames);
     int rc = HYPERVISOR_grant_table_op(GNTTABOP_setup_table, &setup_op, 1);
     if (!rc)
     {
-        for (int i = 0; i < MICROPV_SHARED_PAGES; i++)
+        // log what we've found
+        for (int i = 0; i < NR_GRANT_FRAMES; i++)
         {
-            PRINTK("frame[%i]=%lx", i, table_frames[i]);
+            PRINTK("frame[%i]=%lx mapped to %p", i, table_frames[i], grant_table_pages[i]);
+            void *rc = xenmmu_remap_page((uint64_t)grant_table_pages[i], table_frames[i] << __PAGE_SHIFT, 0);
+            BUG_ON(rc == NULL);
         }
     }
 
     return rc;
 }
+

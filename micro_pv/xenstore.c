@@ -23,6 +23,7 @@
   -- project includes (import)
   ---------------------------------------------------------------------*/
 #include "xenevents.h"
+#include "xenmmu.h"
 #include "xenconsole.h"
 #include "coroutine.h"
 #include "psnprintf.h"
@@ -55,6 +56,7 @@ static int xenstore_req_id = 0;
 static char xenstore_dump[XENSTORE_RING_SIZE] = { 0 };
 static char hypervisor_domid[6];
 static evtchn_port_t port = -1;
+static char data_directory_path[100] = {0};
 
 /*---------------------------------------------------------------------
   -- private functions
@@ -135,7 +137,7 @@ static int xenstore_read_response(char * message, int length)
     return 0;
 }
 
-int xenstore_transact(coroutine_context_t *coroutine_context, const void *request, size_t request_length, char *response, size_t response_size, size_t *response_length)
+static int xenstore_transact(coroutine_context_t *coroutine_context, const void *request, size_t request_length, char *response, size_t response_size, size_t *response_length)
 {
     // write the message
     COROUTINE_BEGIN;
@@ -200,7 +202,7 @@ int xenstore_transact(coroutine_context_t *coroutine_context, const void *reques
     return 0;
 }
 
-static int xenstore_read(const char *key, char *value, size_t value_size, size_t *value_length)
+int xenstore_read(const char *key, char *value, size_t value_size, size_t *value_length)
 {
     int rc = 0;
     int key_length = strlen(key) + 1;
@@ -227,7 +229,7 @@ static int xenstore_read(const char *key, char *value, size_t value_size, size_t
     return rc;
 }
 
-static int xenstore_get_perms(const char *path, char *value, size_t value_size, size_t *value_length)
+int xenstore_get_perms(const char *path, char *value, size_t value_size, size_t *value_length)
 {
     int rc = 0;
     int key_length = strlen(path) + 1;
@@ -254,7 +256,7 @@ static int xenstore_get_perms(const char *path, char *value, size_t value_size, 
     return rc;
 }
 
-static int xenstore_set_perms(const char *path, const char *values)
+int xenstore_set_perms(const char *path, const char *values)
 {
     int rc = 0;
     int key_length = strlen(path) + 1;
@@ -281,7 +283,7 @@ static int xenstore_set_perms(const char *path, const char *values)
 }
 
 /* Write a key/value pair to the XenStore */
-static int xenstore_write(const char *key, const char *value)
+int xenstore_write(const char *key, const char *value)
 {
     int rc = 0;
     int key_length = strlen(key) + 1;
@@ -309,7 +311,7 @@ static int xenstore_write(const char *key, const char *value)
 }
 
 /* make a subdirectory in the xenstore */
-static int xenstore_mkdir(const char *directory)
+int xenstore_mkdir(const char *directory)
 {
     int rc = 0;
     int key_length = strlen(directory) + 1;
@@ -364,13 +366,6 @@ static void xenstore_event_handler(evtchn_port_t port, struct pt_regs *regs, voi
     //struct xenstore_domain_interface *ring = xenstore_interface();
 }
 
-/**
- * Initialise the Xen store. The store ring buffer page is already mapped
- * into the guest address space, so we don't need to map the page into our
- * address space.
- *
- * @return 0 if success, -1 otherwise.
- */
 int xenstore_init(void)
 {
     if (!xenstore_event())
@@ -393,30 +388,31 @@ int xenstore_init(void)
     hypervisor_domid[domid_length] = 0;
     xenconsole_printf("domid: %.*s\r\n", (int)domid_length, hypervisor_domid);
 
-#if HYPERVISOR_PRODUCE_RING_BUFFER == 1
-    // create buffer
-    const size_t buffer_size = 100;
+    // build the path to OUR data section of the xenstore
+    psnprintf(data_directory_path, sizeof(data_directory_path), "/local/domain/%s/data", hypervisor_domid);
+
+    // make sure that we can write to the data directory in our xenstore branch
+    const size_t buffer_size = 10;
     size_t buffer_length = 0;
     char buffer[buffer_size + 1];
-    char path[100];
-    psnprintf(path, sizeof(path), "/local/domain/%s/data", hypervisor_domid);
     psnprintf(buffer, sizeof(buffer), "w%s", hypervisor_domid);
-    xenstore_set_perms(path, buffer);
-    xenstore_get_perms(path, buffer, buffer_size, &buffer_length);
-    micropv_console_write("%s perms: %i %.*s\r\n", path, (int)buffer_length, (int)buffer_length, buffer);
-
-    char data_path[100];
-    char data_value[20];
-    psnprintf(data_value, sizeof(data_value), "%lx", (long unsigned)0); //virt_to_mfn(ring_buffer));
-    psnprintf(data_path, sizeof(data_path), "%s/command_line", path);
-    if (xenstore_write(data_path, "100"))
-        micropv_console_write("xenstore_write %s fails %s\r\n", data_path, xenstore_dump);
-    else if (xenstore_read(data_path, buffer, buffer_size, &buffer_length))
-        micropv_console_write("xenstore_read %s fails %s\r\n", data_path, xenstore_dump);
-    else
-        micropv_console_write("%s = %.*s\r\n", data_path, (int)buffer_length, buffer);
-#endif
+    xenstore_set_perms(data_directory_path, buffer);
+    xenstore_get_perms(data_directory_path, buffer, buffer_size, &buffer_length);
+    PRINTK("%s perms: %i %.*s\r\n", data_directory_path, (int)buffer_length, (int)buffer_length, buffer);
 
     return 0;
+}
+
+void xenstore_publish(const char *relative_path, uint64_t value)
+{
+    char data_path[100];
+    char data_value[20];
+
+    psnprintf(data_value, sizeof(data_value), "%lx", value);
+    psnprintf(data_path, sizeof(data_path), "%s/%s", data_directory_path, relative_path);
+    if (xenstore_write(data_path, data_value))
+        PRINTK("xenstore_write %s fails %s\r\n", data_path, xenstore_dump);
+    else
+        PRINTK("%s = %s\r\n", data_path, data_value);
 }
 

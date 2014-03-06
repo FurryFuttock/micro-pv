@@ -26,7 +26,6 @@
 
 #define __pte(x) ((pte_t) { (x) } )
 
-//#define rmb()  __asm__ __volatile__ ("lock; addl $0,0(%%esp)": : :"memory")
 #define mb()    __asm__ __volatile__ ("mfence":::"memory")
 #define rmb()   __asm__ __volatile__ ("lfence":::"memory")
 #define wmb()   __asm__ __volatile__ ("sfence" ::: "memory") /* From CONFIG_UNORDERED_IO (linux) */
@@ -51,12 +50,10 @@
 /*---------------------------------------------------------------------
   -- standard includes
   ---------------------------------------------------------------------*/
-#include <xen/xen.h>
 
 /*---------------------------------------------------------------------
   -- project includes (import)
   ---------------------------------------------------------------------*/
-#include "arch_limits.h"
 
 /*---------------------------------------------------------------------
   -- project includes (export)
@@ -65,17 +62,10 @@
 /*---------------------------------------------------------------------
   -- macros (postamble)
   ---------------------------------------------------------------------*/
-//-- MEMORY POINTERS
-#define VIRT_START                 ((unsigned long)&_text)
-#define to_virt(x)                 ((void *)((unsigned long)(x)+VIRT_START))
-#define mfn_to_pfn(_mfn)           (machine_to_phys_mapping[(_mfn)])
-#define mfn_to_virt(_mfn)          (to_virt(mfn_to_pfn(_mfn) << __PAGE_SHIFT))
 
 /*---------------------------------------------------------------------
   -- data types
   ---------------------------------------------------------------------*/
-typedef unsigned long paddr_t;
-typedef unsigned long maddr_t;
 
 /*---------------------------------------------------------------------
   -- function prototypes
@@ -84,7 +74,6 @@ typedef unsigned long maddr_t;
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
-extern char _text;
 
 /*---------------------------------------------------------------------
   -- local variables
@@ -97,6 +86,7 @@ extern char _text;
 /*---------------------------------------------------------------------
   -- public functions
   ---------------------------------------------------------------------*/
+
 static inline void synch_set_bit(int nr, volatile void * addr)
 {
     __asm__ __volatile__ (
@@ -223,13 +213,6 @@ static inline unsigned long __ffs(unsigned long word)
                 :"=r" (word)
                 :"rm" (word));
         return word;
-}
-
-static __inline__ paddr_t machine_to_phys(maddr_t machine)
-{
-        paddr_t phys = mfn_to_pfn(machine >> __PAGE_SHIFT);
-        phys = (phys << __PAGE_SHIFT) | (machine & ~__PAGE_MASK);
-        return phys;
 }
 #endif
 

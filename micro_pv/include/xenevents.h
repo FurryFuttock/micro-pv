@@ -80,6 +80,8 @@ evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t handler);
  */
 evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler);
 
+void do_exit(void);
+
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/

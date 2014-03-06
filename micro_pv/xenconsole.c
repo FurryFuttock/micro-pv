@@ -28,6 +28,7 @@
 #include "os.h"
 #include "xenconsole.h"
 #include "xenevents.h"
+#include "xenmmu.h"
 #include "psnprintf.h"
 
 /*---------------------------------------------------------------------
