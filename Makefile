@@ -4,7 +4,7 @@ SRC_DIRS=stdlib micro_pv
 #-- Scan directories to find what to compile
 SRC_C=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.c'))
 SRC_ASM=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*x86_64.S'))
-SRC_H=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.h'))
+SRC_H=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.h')) micro_pv.h
 
 #-- This is overkill, but safe. I have had problems generating .d files with $(CC) -MM in the past so
 #-- we rebuild whenever ANY header file has changed or the Makefile or course
