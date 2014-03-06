@@ -25,7 +25,7 @@
 #include "hypervisor.h"
 #include "xenconsole.h"
 #include "xentime.h"
-#include "../micro_pv.h"
+#include "../micropv.h"
 
 /*---------------------------------------------------------------------
   -- project includes (export)

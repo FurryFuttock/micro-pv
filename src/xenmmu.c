@@ -24,7 +24,7 @@
 /*---------------------------------------------------------------------
   -- project includes (imports)
   ---------------------------------------------------------------------*/
-#include "../micro_pv.h"
+#include "../micropv.h"
 #include "hypercall.h"
 #include "hypervisor.h"
 

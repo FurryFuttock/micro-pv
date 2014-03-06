@@ -68,7 +68,7 @@
   -- project includes (imports)
   ---------------------------------------------------------------------*/
 #include "hypercall.h"
-#include "../micro_pv.h"
+#include "../micropv.h"
 #include "xenmmu.h"
 #include "xenevents.h"
 #include "xenstore.h"

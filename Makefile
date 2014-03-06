@@ -1,10 +1,10 @@
 #-- source directories
-SRC_DIRS=stdlib micro_pv
+SRC_DIRS=stdlib src
 
 #-- Scan directories to find what to compile
 SRC_C=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.c'))
 SRC_ASM=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*x86_64.S'))
-SRC_H=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.h')) micro_pv.h
+SRC_H=$(foreach d,$(SRC_DIRS),$(shell find $(d) -iname '*.h')) micropv.h
 
 #-- This is overkill, but safe. I have had problems generating .d files with $(CC) -MM in the past so
 #-- we rebuild whenever ANY header file has changed or the Makefile or course
@@ -26,7 +26,7 @@ CFLAGS  = -c -m64 -std=c99 -Wall -g $(INC_FLAGS) -D__XEN_INTERFACE_VERSION__=$(X
 ASFLAGS = -c -m64 -D__ASSEMBLY__ $(INC_FLAGS)
 
 #-- What we want to make
-OUTPUT=micro_pv
+OUTPUT=micropv
 
 #-- Make sure that we compile correctly
 %.o : %.c $(DEPS)
