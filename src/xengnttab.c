@@ -83,7 +83,8 @@
   ---------------------------------------------------------------------*/
 #define NR_RESERVED_ENTRIES 8
 #define NR_GRANT_FRAMES 4
-#define NR_GRANT_ENTRIES (NR_GRANT_FRAMES * __PAGE_SIZE / sizeof(grant_entry_v2_t))
+#define NR_GRANT_ENTRIES_V1 (NR_GRANT_FRAMES * __PAGE_SIZE / sizeof(grant_entry_v1_t))
+#define NR_GRANT_ENTRIES_V2 (NR_GRANT_FRAMES * __PAGE_SIZE / sizeof(grant_entry_v2_t))
 
 /*---------------------------------------------------------------------
   -- forward declarations
@@ -94,9 +95,23 @@
   ---------------------------------------------------------------------*/
 typedef grant_ref_t uint32_t;
 
+typedef struct grant_interface_t
+{
+    void (*xengnttab_share)(grant_ref_t ref, uint64_t mfn, int readonly);
+    void (*xengnttab_list)();
+    const grant_ref_t nr_grant_entries;
+} grant_interface_t;
+
 /*---------------------------------------------------------------------
   -- function prototypes
   ---------------------------------------------------------------------*/
+//--- VERSION 1
+static void xengnttab_share_v1(grant_ref_t ref, uint64_t mfn, int readonly);
+static void xengnttab_list_v1();
+
+//--- VERSION 2
+static void xengnttab_share_v2(grant_ref_t ref, uint64_t mfn, int readonly);
+static void xengnttab_list_v2();
 
 /*---------------------------------------------------------------------
   -- global variables
@@ -105,9 +120,27 @@ typedef grant_ref_t uint32_t;
 /*---------------------------------------------------------------------
   -- local variables
   ---------------------------------------------------------------------*/
-static char grant_table_pages[NR_GRANT_FRAMES][__PAGE_SIZE] __attribute__((aligned(__PAGE_SIZE)));
-static grant_entry_v2_t *gnttab_table = (grant_entry_v2_t *)grant_table_pages;
-static grant_ref_t gnttab_list[NR_GRANT_ENTRIES] = {0};
+static char grant_table_pages[NR_GRANT_FRAMES][__PAGE_SIZE] __attribute__((aligned(__PAGE_SIZE))) = {{0}};
+
+// grant_entry_v2_t is bigger that grant_entry_v1_t, so we get more grant_entry_v1_t entries
+// hence we use the larger value for this ref list
+static grant_ref_t gnttab_list[NR_GRANT_ENTRIES_V1] = {0};
+
+static grant_interface_t interface_v1 =
+{
+    .xengnttab_share = xengnttab_share_v1,
+    .xengnttab_list = xengnttab_list_v1,
+    .nr_grant_entries = NR_GRANT_ENTRIES_V1,
+};
+
+static grant_interface_t interface_v2 =
+{
+    .xengnttab_share = xengnttab_share_v2,
+    .xengnttab_list = xengnttab_list_v2,
+    .nr_grant_entries = NR_GRANT_ENTRIES_V2,
+};
+
+static grant_interface_t *interface = NULL;
 
 /*---------------------------------------------------------------------
   -- implementation
@@ -127,7 +160,7 @@ static grant_ref_t get_free_entry(void)
 
     micropv_interrupt_disable();
     ref = gnttab_list[0];
-    BUG_ON(ref < NR_RESERVED_ENTRIES || ref >= NR_GRANT_ENTRIES);
+    BUG_ON((ref < NR_RESERVED_ENTRIES) || (ref >= interface->nr_grant_entries));
     gnttab_list[0] = gnttab_list[ref];
     micropv_interrupt_enable();
 
@@ -159,28 +192,85 @@ grant_handle_t micropv_shared_memory_consume(domid_t dom_friend, unsigned int en
     }
 }
 
-void micropv_shared_memory_publish(const char *name, const void *buffer, int readonly)
+static void xengnttab_share_v1(grant_ref_t ref, uint64_t mfn, int readonly)
 {
-    uint64_t mfn = virt_to_mfn(buffer);
-
-    // get the index of the next available grant entry
-    grant_ref_t ref = get_free_entry();
-    PRINTK("buffer=%p ref=%i", buffer, ref);
-
     // set the grant data
+    grant_entry_v1_t *gnttab_table = (grant_entry_v1_t *) grant_table_pages;
+    gnttab_table[ref].frame = mfn;
+    gnttab_table[ref].domid = 0;
+    wmb();
+    gnttab_table[ref].flags = GTF_permit_access | (readonly ? GTF_readonly : 0);
+
+}
+
+static void xengnttab_share_v2(grant_ref_t ref, uint64_t mfn, int readonly)
+{
+    // set the grant data
+    grant_entry_v2_t *gnttab_table = (grant_entry_v2_t *) grant_table_pages;
     gnttab_table[ref].full_page.frame = mfn;
     gnttab_table[ref].full_page.hdr.domid = 0;
     wmb();
     gnttab_table[ref].full_page.hdr.flags = GTF_permit_access | (readonly ? GTF_readonly : 0);
 
+}
+
+void micropv_shared_memory_publish(const char *name, const void *buffer, int readonly)
+{
+    // convert the buffer address to machine frame number
+    uint64_t mfn = virt_to_mfn(buffer);
+
+    // get the index of the next available grant entry
+    grant_ref_t ref = get_free_entry();
+
+    // map the frame
+    BUG_ON(interface == NULL);
+    interface->xengnttab_share(ref, mfn, readonly);
+    PRINTK("physical_address=%p mapped to machine_address=%lx with grant_ref=%i\n", buffer, mfn << __PAGE_SHIFT, ref);
+
     // publish this shared page in the xenstore
-    xenstore_publish(name, mfn);
+    xenstore_publish(name, ref);
+}
+
+static void xengnttab_list_v1()
+{
+    grant_entry_v1_t *gnttab_table = (grant_entry_v1_t *) grant_table_pages;
+    for (int ref = 0; ref < interface->nr_grant_entries; ref++)
+        if (gnttab_table[ref].flags)
+            PRINTK("ref=%i, frame=%i, dom=%i, flags=%i\n", ref, gnttab_table[ref].frame, gnttab_table[ref].domid, gnttab_table[ref].flags);
+}
+
+static void xengnttab_list_v2()
+{
+    grant_entry_v2_t *gnttab_table = (grant_entry_v2_t *) grant_table_pages;
+    for (int ref = 0; ref < interface->nr_grant_entries; ref++)
+        if (gnttab_table[ref].full_page.hdr.flags)
+            PRINTK("ref=%i, frame=%lii, dom=%i, flags=%i\n", ref, gnttab_table[ref].full_page.frame, gnttab_table[ref].full_page.hdr.domid, gnttab_table[ref].full_page.hdr.flags);
+}
+
+void micropv_shared_memory_list()
+{
+    BUG_ON(interface == NULL);
+    interface->xengnttab_list();
 }
 
 int xengnttab_init()
 {
+    // get the grant version
+    gnttab_get_version_t gnttab_version = {0};
+    gnttab_version.dom = DOMID_SELF;
+    int rc = HYPERVISOR_grant_table_op(GNTTABOP_get_version, &gnttab_version, 1);
+    BUG_ON(rc != 0);
+    PRINTK("We are using grant version %i\n", gnttab_version.version);
+
+    // select the interface for this version
+    switch (gnttab_version.version)
+    {
+    case 1: interface = &interface_v1; break;
+    case 2: interface = &interface_v2; break;
+    }
+
     // initialise the grant access list
-    for (int i = NR_RESERVED_ENTRIES; i < NR_GRANT_ENTRIES; i++)
+    for (int i = NR_RESERVED_ENTRIES; i < interface->nr_grant_entries; i++)
         put_free_entry(i);
 
     /* Create the grant table */
@@ -189,7 +279,7 @@ int xengnttab_init()
     setup_op.dom = DOMID_SELF;
     setup_op.nr_frames = NR_GRANT_FRAMES;
     set_xen_guest_handle(setup_op.frame_list, table_frames);
-    int rc = HYPERVISOR_grant_table_op(GNTTABOP_setup_table, &setup_op, 1);
+    rc = HYPERVISOR_grant_table_op(GNTTABOP_setup_table, &setup_op, 1);
     if (!rc)
     {
         // log what we've found
@@ -201,6 +291,7 @@ int xengnttab_init()
         }
     }
 
+    // perform the version initialisation
     return rc;
 }
 

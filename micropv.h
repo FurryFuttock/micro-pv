@@ -201,6 +201,8 @@ int micropv_console_write(const void *ptr, size_t len);
  */
 void micropv_shared_memory_publish(const char *name, const void *buffer, int readonly);
 
+void micropv_shared_memory_list();
+
 #if 0
 /**
  * Consume a page offered by another VM

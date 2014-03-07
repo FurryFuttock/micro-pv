@@ -408,7 +408,7 @@ void xenstore_publish(const char *relative_path, uint64_t value)
     char data_path[100];
     char data_value[20];
 
-    psnprintf(data_value, sizeof(data_value), "%lx", value);
+    psnprintf(data_value, sizeof(data_value), "%lu", value);
     psnprintf(data_path, sizeof(data_path), "%s/%s", data_directory_path, relative_path);
     if (xenstore_write(data_path, data_value))
         PRINTK("xenstore_write %s fails %s\r\n", data_path, xenstore_dump);
