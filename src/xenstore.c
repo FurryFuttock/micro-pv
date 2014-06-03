@@ -403,16 +403,37 @@ int xenstore_init(void)
     return 0;
 }
 
-void xenstore_publish(const char *relative_path, uint64_t value)
+void xenstore_publish(const char *relative_path, uint32_t value)
 {
     char data_path[100];
     char data_value[20];
 
-    psnprintf(data_value, sizeof(data_value), "%lu", value);
+    psnprintf(data_value, sizeof(data_value), "%u", value);
     psnprintf(data_path, sizeof(data_path), "%s/%s", data_directory_path, relative_path);
     if (xenstore_write(data_path, data_value))
         PRINTK("xenstore_write %s fails %s\r\n", data_path, xenstore_dump);
     else
         PRINTK("%s = %s\r\n", data_path, data_value);
+}
+
+void xenstore_consume(const char *relative_path, uint32_t *value)
+{
+    char data_path[100] = {0};
+    char data_value[100] = {0};
+    size_t data_length = 0;
+    *value = 0;
+
+    // build the absolute path
+    psnprintf(data_path, sizeof(data_path), "%s/%s", data_directory_path, relative_path);
+
+    // check this is there
+    if (xenstore_read(data_path, data_value, sizeof(data_value) - 1, &data_length))
+        PRINTK("xenstore_read %s fails %s\r\n", data_path, xenstore_dump);
+    else
+    {
+        data_value[data_length] = 0;
+        PRINTK("%s = %s\r\n", data_path, data_value);
+        *value = atoi(data_value);
+    }
 }
 

@@ -35,7 +35,8 @@
   -- function prototypes
   ---------------------------------------------------------------------*/
 int xenstore_init(void);
-void xenstore_publish(const char *relative_path, uint64_t value);
+void xenstore_publish(const char *relative_path, uint32_t value);
+void xenstore_consume(const char *relative_path, uint32_t *value);
 
 /*---------------------------------------------------------------------
   -- global variables

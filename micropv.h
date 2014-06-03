@@ -201,6 +201,30 @@ int micropv_console_write(const void *ptr, size_t len);
  */
 void micropv_shared_memory_publish(const char *name, const void *buffer, int readonly);
 
+/**
+ * Consume a shared page. The page MUST be one complete
+ * processor page, i.e. declare as char
+ * __atribute__((aligned(4096)).
+ *
+ * @param name   Name of the entry in the Xen store (relative to
+ *               this VM)
+ * @param buffer Address of the memory to be mapped. This must
+ *               be a pointer to a processor page.
+ *
+ * @return Grant handle on success, otherwise -1. The grant handle must be sent to the unshare call
+ */
+uint32_t micropv_shared_memory_consume(const char *name, void *buffer);
+
+/**
+ * Release a page that was consumed from a different VM
+ *
+ * @author smartin (6/3/2014)
+ *
+ * @param handle Handle created by micropv_shared_memory_consume
+ * @param buffer Address of shared memory.
+ */
+void micropv_shared_memory_unconsume(uint32_t handle, void *buffer);
+
 void micropv_shared_memory_list();
 
 #if 0

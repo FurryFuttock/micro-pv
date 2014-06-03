@@ -98,6 +98,8 @@ typedef grant_ref_t uint32_t;
 typedef struct grant_interface_t
 {
     void (*xengnttab_share)(grant_ref_t ref, uint64_t mfn, int readonly);
+    grant_handle_t (*xengnttab_map)(int dom_friend, grant_ref_t ref, void *addr, int readonly);
+    void (*xengnttab_unmap)(uint32_t handle, void *addr);
     void (*xengnttab_list)();
     const grant_ref_t nr_grant_entries;
 } grant_interface_t;
@@ -105,6 +107,9 @@ typedef struct grant_interface_t
 /*---------------------------------------------------------------------
   -- function prototypes
   ---------------------------------------------------------------------*/
+static grant_handle_t xengnttab_map(int dom_friend, grant_ref_t ref, void *addr, int readonly);
+static void xengnttab_unmap(uint32_t handle, void *addr);
+
 //--- VERSION 1
 static void xengnttab_share_v1(grant_ref_t ref, uint64_t mfn, int readonly);
 static void xengnttab_list_v1();
@@ -129,6 +134,8 @@ static grant_ref_t gnttab_list[NR_GRANT_ENTRIES_V1] = {0};
 static grant_interface_t interface_v1 =
 {
     .xengnttab_share = xengnttab_share_v1,
+    .xengnttab_map = xengnttab_map,
+    .xengnttab_unmap = xengnttab_unmap,
     .xengnttab_list = xengnttab_list_v1,
     .nr_grant_entries = NR_GRANT_ENTRIES_V1,
 };
@@ -136,6 +143,8 @@ static grant_interface_t interface_v1 =
 static grant_interface_t interface_v2 =
 {
     .xengnttab_share = xengnttab_share_v2,
+    .xengnttab_map = xengnttab_map,
+    .xengnttab_unmap = xengnttab_unmap,
     .xengnttab_list = xengnttab_list_v2,
     .nr_grant_entries = NR_GRANT_ENTRIES_V2,
 };
@@ -167,13 +176,13 @@ static grant_ref_t get_free_entry(void)
     return ref;
 }
 
-grant_handle_t micropv_shared_memory_consume(domid_t dom_friend, unsigned int entry, void *shared_page, grant_handle_t *handle)
+static grant_handle_t xengnttab_map(int dom_friend, grant_ref_t ref, void *addr, int readonly)
 {
     /* Set up the mapping operation */
     gnttab_map_grant_ref_t map_op;
-    map_op.host_addr = (uint64_t)shared_page;
+    map_op.host_addr = (uint64_t)addr;
     map_op.flags = GNTMAP_host_map;
-    map_op.ref = entry;
+    map_op.ref = ref;
     map_op.dom = dom_friend;
 
     /* Perform the map */
@@ -187,9 +196,42 @@ grant_handle_t micropv_shared_memory_consume(domid_t dom_friend, unsigned int en
     else
     {
         /* Return the handle */
-        *handle = map_op.handle;
-        return 0;
+        return map_op.handle;
     }
+}
+
+static void xengnttab_unmap(uint32_t handle, void *addr)
+{
+    /* Set up the mapping operation */
+    gnttab_map_grant_ref_t unmap_op;
+    unmap_op.host_addr = (uint64_t)addr;
+    unmap_op.flags = GNTMAP_host_map;
+    unmap_op.handle = handle;
+
+    /* Perform the map */
+    HYPERVISOR_grant_table_op(GNTTABOP_unmap_grant_ref, &unmap_op, 1);
+}
+
+uint32_t micropv_shared_memory_consume(const char *name, void *buffer)
+{
+    // get the grant reference
+    grant_ref_t ref = 0;
+    xenstore_consume(name, &ref);
+    if (!ref)
+        return -1;
+
+    // map the reference
+    BUG_ON(interface == NULL);
+    grant_handle_t handle = interface->xengnttab_map(0, ref, buffer, 0);
+    PRINTK("grant_handle %i for physical_address=%p mapped to dom=0 with grant_ref=%i\n", handle, buffer, ref);
+    return handle;
+}
+
+void micropv_shared_memory_unconsume(uint32_t handle, void *buffer)
+{
+    BUG_ON(interface == NULL);
+    PRINTK("Unmap handle=%i for physical_address=%p\n", handle, buffer);
+    interface->xengnttab_unmap(handle, buffer);
 }
 
 static void xengnttab_share_v1(grant_ref_t ref, uint64_t mfn, int readonly)

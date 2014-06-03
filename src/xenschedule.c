@@ -126,12 +126,12 @@ void micropv_scheduler_initialise_context(struct pt_regs *regs, void *start_ptr,
     regs->rip = (uint64_t)start_ptr;                                    // instruction pointer
 }
 
-void micropv_scheduler_yield()
+void micropv_scheduler_yield(void)
 {
     HYPERVISOR_sched_op(SCHEDOP_yield, 0);
 }
 
-void micropv_scheduler_block()
+void micropv_scheduler_block(void)
 {
     HYPERVISOR_sched_op(SCHEDOP_block, 0);
 }
