@@ -158,7 +158,7 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
         // read the requested response
         if (response && response_size && (msg.type != XS_ERROR))
         {
-            register size_t length = MIN(msg.len, response_size);
+            register size_t length = MIN(MASK_XENSTORE_IDX(msg.len), response_size);
             if (response_length)
                 *response_length = length;
             xenstore_read_response(response, length);
