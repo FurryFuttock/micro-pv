@@ -14,12 +14,15 @@
   -- macros (preamble)
   ---------------------------------------------------------------------*/
 #define PRINTK(format...) micropv_printk(__FILE__, __LINE__, ##format)
+#define XBT_NIL ((xenbus_transaction_t)0)
+#define SIZEOF_ARRAY(x) (sizeof((x)) / sizeof(*x))
 
 /*---------------------------------------------------------------------
   -- standard includes
   ---------------------------------------------------------------------*/
 #include <stdint.h>
 #include <sys/time.h>
+#include <xen/grant_table.h>
 
 /*---------------------------------------------------------------------
   -- project includes (import)
@@ -34,6 +37,12 @@
   ---------------------------------------------------------------------*/
 
 /*---------------------------------------------------------------------
+  -- forward declarations
+  ---------------------------------------------------------------------*/
+struct micropv_pci_handle_t;
+struct micropv_pci_bus_t;
+
+/*---------------------------------------------------------------------
   -- data types
   ---------------------------------------------------------------------*/
 
@@ -44,44 +53,175 @@
  * can do whatever it wants.
  */
 struct pt_regs {
-        unsigned long r15;
-        unsigned long r14;
-        unsigned long r13;
-        unsigned long r12;
-        unsigned long rbp;
-        unsigned long rbx;
+    unsigned long r15;
+    unsigned long r14;
+    unsigned long r13;
+    unsigned long r12;
+    unsigned long rbp;
+    unsigned long rbx;
 /* arguments: non interrupts/non tracing syscalls only save upto here*/
-        unsigned long r11;
-        unsigned long r10;
-        unsigned long r9;
-        unsigned long r8;
-        unsigned long rax;
-        unsigned long rcx;
-        unsigned long rdx;
-        unsigned long rsi;
-        unsigned long rdi;
-        unsigned long orig_rax;
+    unsigned long r11;
+    unsigned long r10;
+    unsigned long r9;
+    unsigned long r8;
+    unsigned long rax;
+    unsigned long rcx;
+    unsigned long rdx;
+    unsigned long rsi;
+    unsigned long rdi;
+    unsigned long orig_rax;
 /* end of arguments */
 /* cpu exception frame or undefined */
-        unsigned long rip;
-        unsigned long cs;
-        unsigned long eflags;
-        unsigned long rsp;
-        unsigned long ss;
+    unsigned long rip;
+    unsigned long cs;
+    unsigned long eflags;
+    unsigned long rsp;
+    unsigned long ss;
 /* top of stack page */
 };
 
 enum xen_register_file
 {
-        xen_register_file_r15, xen_register_file_r14, xen_register_file_r13, xen_register_file_r12, xen_register_file_rbp, xen_register_file_rbx,
+    xen_register_file_r15, xen_register_file_r14, xen_register_file_r13, xen_register_file_r12, xen_register_file_rbp, xen_register_file_rbx,
 /* arguments: non interrupts/non tracing syscalls only save upto here*/
-        xen_register_file_r11, xen_register_file_r10, xen_register_file_r9, xen_register_file_r8, xen_register_file_rax, xen_register_file_rcx,
-        xen_register_file_rdx, xen_register_file_rsi, xen_register_file_rdi, xen_register_file_orig_rax,
+    xen_register_file_r11, xen_register_file_r10, xen_register_file_r9, xen_register_file_r8, xen_register_file_rax, xen_register_file_rcx,
+    xen_register_file_rdx, xen_register_file_rsi, xen_register_file_rdi, xen_register_file_orig_rax,
 /* end of arguments */
 /* cpu exception frame or undefined */
-        xen_register_file_rip, xen_register_file_cs, xen_register_file_eflags, xen_register_file_rsp, xen_register_file_ss,
-        xen_register_file_registers
+    xen_register_file_rip, xen_register_file_cs, xen_register_file_eflags, xen_register_file_rsp, xen_register_file_ss,
+    xen_register_file_registers
 };
+
+typedef struct micropv_grant_handle_t
+{
+    uint32_t handle;
+    uint64_t dev_bus_addr;
+} micropv_grant_handle_t;
+
+typedef struct micropv_pci_device_t
+{
+    uint32_t domain, bus, slot, fun, vendor, device, rev, class;
+    union
+    {
+        unsigned int raw;
+        struct memory_bar
+        {
+            unsigned int type : 1;
+            unsigned int locatable : 2;
+            unsigned int prefretchable : 1;
+            unsigned int address : 28;
+        } memory;
+        struct io_bar
+        {
+            unsigned int type : 1;
+            unsigned int reserved : 1;
+            unsigned int address : 30;
+        } io;
+    } bar[4];
+} micropv_pci_device_t;
+
+typedef int (* micropv_pci_dispatcher_t)(struct micropv_pci_handle_t *handle);
+
+typedef struct micropv_pci_bus_t
+{
+    /**
+     * Advertised event channel published by backend driver via
+     * xenstore
+     *
+     * @author smartin (7/22/2014)
+     */
+    int port;
+    /**
+     * Hypervisor assigned event channel associated to port
+     *
+     * @author smartin (7/22/2014)
+     */
+    int channel;
+    /**
+     * Domain id where the backend is running
+     *
+     * @author smartin (7/22/2014)
+     */
+    int32_t backend_domain;
+    /**
+     * Relative path in our area of the xenstore to PCI device data
+     * e.g. device/pci/0
+     *
+     * @author smartin (7/22/2014)
+     */
+    char nodename[64];
+    /**
+     * Absolute path in the xenstore to the PCI device data in the
+     * backend domain
+     *
+     * @author smartin (7/22/2014)
+     */
+    char backend_path[64];
+    /**
+     * Page buffer (must be one page in size) that we must share
+     * with the backend_domain to talk to the PCI bus
+     *
+     * @author smartin (7/22/2014)
+     */
+    char *page_buffer;
+    /**
+     * Shared memory grant reference for the page_buffer.
+     *
+     * @author smartin (7/22/2014)
+     */
+    grant_ref_t grant_ref;
+    /**
+     * Array of functions that we can call to identify the PCI
+     * device. If the device is recognized then the function will
+     * return a pointer to a micropv_pci_device_ops_t.
+     *
+     * @author smartin (7/22/2014)
+     */
+    micropv_pci_dispatcher_t (**probe)(struct micropv_pci_handle_t *handle, micropv_pci_device_t *device);
+    /**
+     * Number of probe functions in the probe array
+     *
+     * @author smartin (7/22/2014)
+     */
+    int probes;
+} micropv_pci_bus_t;
+
+enum micropv_pci_initialisation_status_t
+{
+    micropv_pci_initialisation_none,
+    micropv_pci_initialisation_backend,
+    micropv_pci_initialisation_device,
+};
+
+typedef struct micropv_pci_handle_t
+{
+    /**
+     * Current status of the PCI initialisation device
+     *
+     * @author smartin (7/22/2014)
+     */
+    enum micropv_pci_initialisation_status_t status;
+
+    /**
+     * Definition of the PCI bus
+     *
+     * @author smartin (7/22/2014)
+     */
+    micropv_pci_bus_t *bus;
+
+    /**
+     * Function to dispatch PCI device on this PCI bus. This is set
+     * up to just handle one PCI device. This is enough for me as I
+     * only have one, however other people will have to generalize
+     * this, either defining this as a fixed array or having the
+     * caller assign an array. I think the second option is better.
+     *
+     * @author smartin (7/23/2014)
+     */
+    micropv_pci_dispatcher_t dispatcher;
+} micropv_pci_handle_t;
+
+typedef uint32_t xenbus_transaction_t;
 
 /*---------------------------------------------------------------------
   -- function prototypes
@@ -119,6 +259,13 @@ void micropv_scheduler_yield(void);
  * Release the CPU and block the domain until the next event.
  */
 void micropv_scheduler_block(void);
+
+/**
+ * Tell the hypervisor to stop me
+ *
+ * @author smartin (7/9/2014)
+ */
+void micropv_exit(void);
 
 // --------- TIME FUNCTIONS
 /**
@@ -195,51 +342,83 @@ int micropv_console_write(const void *ptr, size_t len);
  * Publish a shared page. The page MUST be one complete processor page, i.e.
  * declare as char __atribute__((aligned(4096)).
  *
+ * @param remote_dom domain id which will be granted access
  * @param name     Name that will appear in the Xen store.
  * @param buffer   Address of the memory to be shared. This must be a pointer to a processor page.
  * @param readonly 0 => read/write access to the shared page, otherwise read only acccess.
  */
-void micropv_shared_memory_publish(const char *name, const void *buffer, int readonly);
+void micropv_shared_memory_publish(int remote_dom, const char *name, const void *buffer, int readonly);
 
 /**
  * Consume a shared page. The page MUST be one complete
  * processor page, i.e. declare as char
  * __atribute__((aligned(4096)).
  *
+ * @param handle Stores the grant context data.
  * @param name   Name of the entry in the Xen store (relative to
  *               this VM)
  * @param buffer Address of the memory to be mapped. This must
  *               be a pointer to a processor page.
  *
- * @return Grant handle on success, otherwise -1. The grant handle must be sent to the unshare call
+ * @return 0 on success, otherwise -1.
  */
-uint32_t micropv_shared_memory_consume(const char *name, void *buffer);
+int micropv_shared_memory_consume(micropv_grant_handle_t *handle, const char *name, void *buffer);
 
 /**
  * Release a page that was consumed from a different VM
  *
  * @author smartin (6/3/2014)
- *
  * @param handle Handle created by micropv_shared_memory_consume
  * @param buffer Address of shared memory.
  */
-void micropv_shared_memory_unconsume(uint32_t handle, void *buffer);
+void micropv_shared_memory_unconsume(micropv_grant_handle_t *handle, void *buffer);
 
 void micropv_shared_memory_list();
 
-#if 0
+//--- HYPERVISOR_STATUS
+
 /**
- * Consume a page offered by another VM
+ * Check if the guest is being asked to shutdown
  *
- * @param dom_friend
- * @param entry
- * @param shared_page
- * @param handle
+ * @author smartin (7/7/2014)
  *
- * @return
+ * @return int <0 on error, 0 if no shutdown request, >0 if shutdown requested
  */
-static grant_handle_t hypervisor_consume_ring_buffer(domid_t dom_friend, unsigned int entry, void *ring_buffer, grant_handle_t *handle);
-#endif
+int micropv_is_shutdown(xenbus_transaction_t xbt);
+
+//--- PCI interface
+/**
+ * Map a PCI bus into our domain
+ *
+ * @author smartin (7/9/2014)
+ *
+ * @param handle stores the device context data
+ * @param nodename name of the device in the xenstore
+ * @param page_to_share one 4096 byte aligned page that we will share with the pciback domain
+ *
+ * @return int 0 on success, otherwise -1
+ */
+int micropv_pci_map_bus(micropv_pci_handle_t *handle);
+
+/**
+ * Release a PCI bus from our domain
+ *
+ * @author smartin (7/9/2014)
+ *
+ * @param handle handle initialised by micropv_pci_init
+ */
+void micropv_pci_unmap_bus(micropv_pci_handle_t *handle);
+
+/**
+ * Scan the PCI bus to get the pci devices
+ *
+ * @author smartin (7/18/2014)
+ *
+ * @param handle stores the device context data
+ *
+ * @return int 0 on success, otherwise -1
+ */
+int micropv_pci_scan_bus(micropv_pci_handle_t *handle);
 
 /*---------------------------------------------------------------------
   -- global variables

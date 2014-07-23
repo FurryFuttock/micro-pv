@@ -149,8 +149,8 @@ static void do_stack_walk(unsigned long frame_base)
     unsigned long *frame = (void*) frame_base;
     PRINTK("base is %#lx ", frame_base);
     PRINTK("caller is %#lx\n", frame[1]);
-    if (frame[0])
-        do_stack_walk(frame[0]);
+    //if (frame[0])
+    //    do_stack_walk(frame[0]);
 }
 
 static void dump_mem(unsigned long addr)
@@ -168,7 +168,7 @@ static void dump_mem(unsigned long addr)
 
         // store address
         for (j = 0; j < 16; j++)
-            buffer[j] = hexchar[(i >> (j * 4)) & 0xf];
+            buffer[15 - j] = hexchar[(i >> (j * 4)) & 0xf];
         buffer[16] = ':';
         buffer[17] = ' ';
 

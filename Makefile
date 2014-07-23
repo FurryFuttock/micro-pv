@@ -42,7 +42,7 @@ all : $(OUTPUT).o
 #-- 1.- Merge all object files created by the compilation into a single relocatable object file
 #-- 2.- Rewrite the object file keeping the minimum symbols as global. This doesn't affect debugging as the debug info is not removed.
 $(OUTPUT).o: $(OBJ_ASM) $(OBJ_C)
-	$(LD) -r -m elf_x86_64 -o $@ $^
+	$(LD) -r -m elf_x86_64 -Map=$(OUTPUT).map -o $@ $^
 	objcopy -w -G _start -G do_exit -G micropv_* -G printk -G stack $@ $@
 
 clean:

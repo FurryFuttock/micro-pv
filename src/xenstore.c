@@ -56,7 +56,7 @@ static int xenstore_req_id = 0;
 static char xenstore_dump[XENSTORE_RING_SIZE] = { 0 };
 static char hypervisor_domid[6];
 static evtchn_port_t port = -1;
-static char data_directory_path[100] = {0};
+static volatile int xenstore_event_fired = 0;
 
 /*---------------------------------------------------------------------
   -- private functions
@@ -162,7 +162,6 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
             if (response_length)
                 *response_length = length;
             xenstore_read_response(response, length);
-            PRINTK("%s response %i %.*s\n", coroutine_context->caller, (int)length, (int)length, response);
         }
 
         // read the remainder
@@ -176,7 +175,7 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     // we are out of sync so fail
     if (msg.req_id != xenstore_req_id)
     {
-        PRINTK("%s invalid request id\n", coroutine_context->caller);
+        PRINTK("%s invalid request id. Sent=%i, Received=%i\n", coroutine_context->caller, xenstore_req_id, msg.req_id);
         return -1;
     }
 
@@ -202,14 +201,14 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     return 0;
 }
 
-int xenstore_read(const char *key, char *value, size_t value_size, size_t *value_length)
+int xenstore_read(xenbus_transaction_t xbt, const char *key, char *value, size_t value_size, size_t *value_length)
 {
     int rc = 0;
     int key_length = strlen(key) + 1;
     struct xsd_sockmsg msg = { 0 };
     msg.type = XS_READ;
     msg.req_id = ++xenstore_req_id;
-    msg.tx_id = 0;
+    msg.tx_id = xbt;
     msg.len = key_length;
 
     // run this as a coroutine
@@ -229,14 +228,14 @@ int xenstore_read(const char *key, char *value, size_t value_size, size_t *value
     return rc;
 }
 
-int xenstore_get_perms(const char *path, char *value, size_t value_size, size_t *value_length)
+int xenstore_get_perms(xenbus_transaction_t xbt, const char *path, char *value, size_t value_size, size_t *value_length)
 {
     int rc = 0;
     int key_length = strlen(path) + 1;
     struct xsd_sockmsg msg = { 0 };
     msg.type = XS_GET_PERMS;
     msg.req_id = ++xenstore_req_id;
-    msg.tx_id = 0;
+    msg.tx_id = xbt;
     msg.len = key_length;
 
     // run this as a coroutine
@@ -256,7 +255,7 @@ int xenstore_get_perms(const char *path, char *value, size_t value_size, size_t 
     return rc;
 }
 
-int xenstore_set_perms(const char *path, const char *values)
+int xenstore_set_perms(xenbus_transaction_t xbt, const char *path, const char *values)
 {
     int rc = 0;
     int key_length = strlen(path) + 1;
@@ -264,7 +263,7 @@ int xenstore_set_perms(const char *path, const char *values)
     struct xsd_sockmsg msg = { 0 };
     msg.type = XS_SET_PERMS;
     msg.req_id = ++xenstore_req_id;
-    msg.tx_id = 0;
+    msg.tx_id = xbt;
     msg.len = key_length + value_length;
 
     // run this as a coroutine
@@ -282,8 +281,17 @@ int xenstore_set_perms(const char *path, const char *values)
     return rc;
 }
 
-/* Write a key/value pair to the XenStore */
-int xenstore_write(const char *key, const char *value)
+void xenstore_wait_for_event()
+{
+    while (!xenstore_event_fired)
+        micropv_scheduler_yield();
+
+    micropv_interrupt_disable();
+    xenstore_event_fired = 0;
+    micropv_interrupt_enable();
+}
+
+int xenstore_write(xenbus_transaction_t xbt, const char *key, const char *value)
 {
     int rc = 0;
     int key_length = strlen(key) + 1;
@@ -291,8 +299,10 @@ int xenstore_write(const char *key, const char *value)
     struct xsd_sockmsg msg;
     msg.type = XS_WRITE;
     msg.req_id = ++xenstore_req_id;
-    msg.tx_id = 0;
+    msg.tx_id = xbt;
     msg.len = key_length + value_length;
+
+    PRINTK("WRITE %s - %s\n", key, value);
 
     /* Write the message */
     COROUTINE_DISPATCHER_BEGIN;
@@ -310,8 +320,41 @@ int xenstore_write(const char *key, const char *value)
     return rc;
 }
 
-/* make a subdirectory in the xenstore */
-int xenstore_mkdir(const char *directory)
+int xenstore_write_if_different(xenbus_transaction_t xbt, const char *key, const char *value)
+{
+    int rc = -1;
+    int retry = 0;
+    int local_transaction = 0;
+
+    do
+    {
+        // if we don't have a transaction then start one
+        if (xbt == XBT_NIL)
+        {
+            if (xenstore_transaction_start(&xbt))
+                goto fail;
+            local_transaction = 0;
+        }
+
+        char xenstore_value[strlen(value)+2];
+        size_t xenstore_value_length;
+        rc = xenstore_read(xbt, key, xenstore_value, sizeof(xenstore_value), &xenstore_value_length);
+        if (!rc && strcmp(value, xenstore_value))
+            rc = xenstore_write(xbt,key,value);
+
+        // if the transaction is local to this function then commit
+        if (local_transaction)
+        {
+            xenstore_transaction_end(xbt, rc, &retry);
+            xbt = XBT_NIL;
+        }
+    } while (retry);
+
+    fail:
+        return rc;
+}
+
+int xenstore_mkdir(xenbus_transaction_t xbt, const char *directory)
 {
     int rc = 0;
     int key_length = strlen(directory) + 1;
@@ -319,7 +362,7 @@ int xenstore_mkdir(const char *directory)
     struct xsd_sockmsg msg;
     msg.type = XS_MKDIR;
     msg.req_id = ++xenstore_req_id;
-    msg.tx_id = 0;
+    msg.tx_id = xbt;
     msg.len = key_length;
 
     /* Write the message */
@@ -327,7 +370,7 @@ int xenstore_mkdir(const char *directory)
     if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
         ((rc = xenstore_transact(&coroutine_context, directory, key_length, NULL, 0, NULL)) != 0))
     {
-        PRINTK("error sending key\n");
+        PRINTK("error sending mkdir\n");
         return rc;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
@@ -337,22 +380,21 @@ int xenstore_mkdir(const char *directory)
     return rc;
 }
 
-/* Read a value from the store */
-int xenstore_ls(const char * key, char *values, size_t value_size, size_t *value_length)
+int xenstore_ls(xenbus_transaction_t xbt, const char * key, char *values, size_t value_size, size_t *value_length)
 {
     int rc = 0;
     int key_length = strlen(key) + 1;
     struct xsd_sockmsg msg;
     msg.type = XS_DIRECTORY;
     msg.req_id = ++xenstore_req_id;
-    msg.tx_id = 0;
+    msg.tx_id = xbt;
     msg.len = key_length;
 
     COROUTINE_DISPATCHER_BEGIN;
     if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
         ((rc = xenstore_transact(&coroutine_context, key, key_length + 1, NULL, 0, NULL)) != 0))
     {
-        PRINTK("error sending key\n");
+        PRINTK("error sending ls\n");
         return rc;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, values, value_size, value_length);
@@ -361,9 +403,99 @@ int xenstore_ls(const char * key, char *values, size_t value_size, size_t *value
     return rc;
 }
 
+int xenstore_transaction_start(xenbus_transaction_t *xbt)
+{
+    int rc = 0;
+
+    char value[12];
+    size_t value_length;
+
+    const char *key = "";
+    int key_length = 1;
+
+    struct xsd_sockmsg msg;
+    msg.type = XS_TRANSACTION_START;
+    msg.req_id = ++xenstore_req_id;
+    msg.tx_id = 0;
+    msg.len = key_length;
+
+    /* Write the message */
+    COROUTINE_DISPATCHER_BEGIN;
+    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
+        ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
+    {
+        PRINTK("error sending transaction_start\n");
+        return rc;
+    }
+    rc = xenstore_transact(&coroutine_context, NULL, 0, value, sizeof(value), &value_length);
+    COROUTINE_DISPATCHER_END;
+
+    *xbt = strtol(&value[1], NULL, 10);
+
+    // success
+    return rc;
+}
+
+int xenstore_transaction_end(xenbus_transaction_t xbt, int abort, int *retry)
+{
+    int rc = 0;
+
+    const char *key = abort ? "F" : "T";
+    int key_length = 2;
+
+    struct xsd_sockmsg msg;
+    msg.type = XS_TRANSACTION_START;
+    msg.req_id = ++xenstore_req_id;
+    msg.tx_id = xbt;
+    msg.len = key_length;
+
+    /* Write the message */
+    COROUTINE_DISPATCHER_BEGIN;
+    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
+        ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
+    {
+        PRINTK("error sending transaction_end\n");
+        return rc;
+    }
+    rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
+    COROUTINE_DISPATCHER_END;
+
+    // repeat?
+    *retry = (rc == -2) && msg.len && !strcmp("EAGAIN", xenstore_dump);
+
+    // success
+    return rc;
+}
+
+int xenstore_rm(xenbus_transaction_t xbt, const char *path)
+{
+    int rc = 0;
+    int path_length = strlen(path) + 1;
+    struct xsd_sockmsg msg;
+    msg.type = XS_RM;
+    msg.req_id = ++xenstore_req_id;
+    msg.tx_id = xbt;
+    msg.len = path_length;
+
+    /* Write the message */
+    COROUTINE_DISPATCHER_BEGIN;
+    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
+        ((rc = xenstore_transact(&coroutine_context, path, path_length, NULL, 0, NULL)) != 0))
+    {
+        PRINTK("error sending RM\n");
+        return rc;
+    }
+    rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
+    COROUTINE_DISPATCHER_END;
+
+    return rc;
+}
+
 static void xenstore_event_handler(evtchn_port_t port, struct pt_regs *regs, void *data)
 {
-    //struct xenstore_domain_interface *ring = xenstore_interface();
+    micropv_interrupt_disable();
+    xenstore_event_fired = 1;
+    micropv_interrupt_enable();
 }
 
 int xenstore_init(void)
@@ -384,56 +516,65 @@ int xenstore_init(void)
 
     // get my domain id
     size_t domid_length = 0;
-    xenstore_read("domid", hypervisor_domid, sizeof(hypervisor_domid), &domid_length);
+    xenstore_read(XBT_NIL, "domid", hypervisor_domid, sizeof(hypervisor_domid), &domid_length);
     hypervisor_domid[domid_length] = 0;
     xenconsole_printf("domid: %.*s\r\n", (int)domid_length, hypervisor_domid);
-
-    // build the path to OUR data section of the xenstore
-    psnprintf(data_directory_path, sizeof(data_directory_path), "/local/domain/%s/data", hypervisor_domid);
 
     // make sure that we can write to the data directory in our xenstore branch
     const size_t buffer_size = 10;
     size_t buffer_length = 0;
     char buffer[buffer_size + 1];
     psnprintf(buffer, sizeof(buffer), "w%s", hypervisor_domid);
-    xenstore_set_perms(data_directory_path, buffer);
-    xenstore_get_perms(data_directory_path, buffer, buffer_size, &buffer_length);
-    PRINTK("%s perms: %i %.*s\r\n", data_directory_path, (int)buffer_length, (int)buffer_length, buffer);
+    xenstore_set_perms(XBT_NIL, "data", buffer);
+    xenstore_get_perms(XBT_NIL, "data", buffer, buffer_size, &buffer_length);
 
     return 0;
 }
 
-void xenstore_publish(const char *relative_path, uint32_t value)
+int xenstore_write_integer(xenbus_transaction_t xbt, const char *path, int32_t value)
 {
-    char data_path[100];
+    int rc = -1;
     char data_value[20];
 
     psnprintf(data_value, sizeof(data_value), "%u", value);
-    psnprintf(data_path, sizeof(data_path), "%s/%s", data_directory_path, relative_path);
-    if (xenstore_write(data_path, data_value))
-        PRINTK("xenstore_write %s fails %s\r\n", data_path, xenstore_dump);
+    if (xenstore_write(xbt, path, data_value))
+        PRINTK("xenstore_write %s fails %s\r\n", path, xenstore_dump);
     else
-        PRINTK("%s = %s\r\n", data_path, data_value);
+        rc = 0;
+
+    return rc;
 }
 
-void xenstore_consume(const char *relative_path, uint32_t *value)
+int xenstore_read_integer(xenbus_transaction_t xbt, const char *path, int32_t *value)
 {
-    char data_path[100] = {0};
-    char data_value[100] = {0};
+    int rc = -1;
+    char data_value[12] = {0};
     size_t data_length = 0;
-    *value = 0;
-
-    // build the absolute path
-    psnprintf(data_path, sizeof(data_path), "%s/%s", data_directory_path, relative_path);
 
     // check this is there
-    if (xenstore_read(data_path, data_value, sizeof(data_value) - 1, &data_length))
-        PRINTK("xenstore_read %s fails %s\r\n", data_path, xenstore_dump);
+    if (xenstore_read(xbt, path, data_value, sizeof(data_value) - 1, &data_length))
+        PRINTK("xenstore_read %s fails %s\r\n", path, xenstore_dump);
     else
     {
-        data_value[data_length] = 0;
-        PRINTK("%s = %s\r\n", data_path, data_value);
-        *value = atoi(data_value);
+        *value = strtol(data_value, NULL, 10);
+        rc = 0;
     }
+
+    return rc;
 }
 
+int micropv_is_shutdown(xenbus_transaction_t xbt)
+{
+    const char *path = "control/shutdown";
+    char data_value[10] = {0};
+    size_t data_length = 0;
+    int rc = -1;
+
+    // check this is there
+    if (xenstore_read(xbt, path, data_value, sizeof(data_value), &data_length))
+        PRINTK("xenstore_read %s fails %s\r\n", path, xenstore_dump);
+    else
+        rc = data_length > 0;
+
+    return rc;
+}

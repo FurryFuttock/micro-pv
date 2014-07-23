@@ -82,7 +82,7 @@ static uint64_t scheduler_callback_dummy(struct pt_regs *regs)
 
 static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 {
-    // set the next timer interrupt event. this must be in the fugure
+    // set the next timer interrupt event. this must be in the future
     do timer_deadline += timer_period;
     while (timer_deadline < micropv_time_monotonic_clock());
 
@@ -120,7 +120,7 @@ void micropv_scheduler_initialise_context(struct pt_regs *regs, void *start_ptr,
     // we assume that everything is in the same data area, so we initialise the stack segment and
     // code segment to the same as we have
     { uint64_t ss; __asm__("\t movq %%ss,%0" : "=r"(ss)); regs->ss = ss; }  // preserve the current stack segment
-    regs->rsp = (uint64_t)(stack_ptr + stack_size);                         // top of stack
+    regs->rsp = (uint64_t)(stack_ptr + stack_size) & ~0xf;                  // top of stack (16 byte aligned)
     regs->eflags = 0x200;                                               // flags - enable interrupts
     { uint64_t cs; __asm__("\t movq %%cs,%0" : "=r"(cs)); regs->cs = cs; }  // preserve the current code segment
     regs->rip = (uint64_t)start_ptr;                                    // instruction pointer
@@ -147,5 +147,16 @@ void xenscheduler_init(void)
     // initialise the periodic timer
     timer_deadline = micropv_time_monotonic_clock() + timer_period;
     xentime_set_next_event(timer_deadline);
+}
+
+void micropv_exit(void)
+{
+    PRINTK("micropv_exit called!\n");
+
+    for (;;)
+    {
+        struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_crash };
+        HYPERVISOR_sched_op(SCHEDOP_shutdown, &sched_shutdown);
+    }
 }
 

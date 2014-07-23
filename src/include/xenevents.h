@@ -10,7 +10,7 @@
 /*---------------------------------------------------------------------
   -- macros (preamble)
   ---------------------------------------------------------------------*/
-#define BUG do_exit
+#define BUG micropv_exit
 
 #define ASSERT(x)                                              \
 do {                                                           \
@@ -68,7 +68,7 @@ void xenevents_init(void);
  *
  * @return -1 if falure, otherwise the associted port number
  */
-evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t handler);
+evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t probe);
 
 /**
  * Bind a function to an event channel.
@@ -80,7 +80,26 @@ evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t handler);
  */
 evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler);
 
-void do_exit(void);
+/**
+ * Ask the hypervisor to give us a new channel
+ *
+ * @author smartin (7/9/2014)
+ *
+ * @param remote_dom dom we want to talk to
+ * @param channel assigned channel
+ *
+ * @return int 0 if success, otherwise -1
+ */
+int xenevents_alloc_channel(int remote_dom, int *channel);
+
+/**
+ * Release an event channel
+ *
+ * @author smartin (7/9/2014)
+ *
+ * @param port port to free
+ */
+void xenevents_unbind_channel(evtchn_port_t port);
 
 /*---------------------------------------------------------------------
   -- global variables
@@ -98,7 +117,7 @@ void do_exit(void);
   -- public functions
   ---------------------------------------------------------------------*/
 /**
- * Initialise the Xen event interface.
+ * notify the remote domain.
  */
 static inline int xenevents_notify_remote_via_evtchn(evtchn_port_t port)
 {

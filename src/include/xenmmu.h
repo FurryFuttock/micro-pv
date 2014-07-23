@@ -97,19 +97,6 @@ typedef unsigned long maddr_t;
 void xenmmu_init(void);
 
 /**
- * Map a physical page into an existing page in the machine memory space
- *
- * @param physical_address
- *                 Page address in the virtual machine.
- * @param machine_address
- *                 Page address in the Hypervisor memory.
- * @param readonly Page access privilege
- *
- * @return Pointer to the address of the page in the virtual machine or null on failure
- */
-void *xenmmu_remap_page(uint64_t physical_address, uint64_t machine_address, int readonly);
-
-/**
  * This calls HYPERCALL_update_va_mapping. As far as I can see this can
  * only remap an existing page. Whenever I try to give it an unmapped
  * (above max_pfn) it seems to fall over. However this does fit in quite

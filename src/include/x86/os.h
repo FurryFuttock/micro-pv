@@ -47,6 +47,11 @@
 #define xchg(ptr,v) ((__typeof__(*(ptr)))__xchg((unsigned long)(v),(ptr),sizeof(*(ptr))))
 #define __xg(x) ((volatile long *)(x))
 
+#define test_bit(nr,addr) \
+(__builtin_constant_p(nr) ? \
+ constant_test_bit((nr),(addr)) : \
+ variable_test_bit((nr),(addr)))
+
 /*---------------------------------------------------------------------
   -- standard includes
   ---------------------------------------------------------------------*/
@@ -213,6 +218,22 @@ static inline unsigned long __ffs(unsigned long word)
                 :"=r" (word)
                 :"rm" (word));
         return word;
+}
+
+static inline int constant_test_bit(int nr, const volatile unsigned long *addr)
+{
+        return ((1UL << (nr & 31)) & (addr[nr >> 5])) != 0;
+}
+
+static inline int variable_test_bit(int nr, const volatile unsigned long * addr)
+{
+        int oldbit;
+
+        __asm__ __volatile__(
+                "btl %2,%1\n\tsbbl %0,%0"
+                :"=r" (oldbit)
+                :"m" (ADDR),"Ir" (nr));
+        return oldbit;
 }
 #endif
 

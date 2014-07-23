@@ -74,23 +74,6 @@ static ev_action_t ev_actions[NUM_CHANNELS] = { { 0 } };
   -- public functions
   ---------------------------------------------------------------------*/
 
-/*
- * do_exit: This is called whenever an IRET fails in entry.S.
- * This will generally be because an application has got itself into
- * a really bad state (probably a bad CS or SS). It must be killed.
- * Of course, minimal OS doesn't have applications :-)
- */
-void do_exit(void)
-{
-    PRINTK("Do_exit called!\n");
-    //stack_walk();
-    for (;;)
-    {
-        struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_crash };
-        HYPERVISOR_sched_op(SCHEDOP_shutdown, &sched_shutdown);
-    }
-}
-
 static void force_evtchn_callback(void)
 {
     int save;
@@ -119,7 +102,7 @@ evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *da
     // sanity check
     if ((port < 0) || (port >= NUM_CHANNELS))
     {
-        PRINTK("ERROR: Handler for port %d already registered, replacing\n", port);
+        PRINTK("ERROR: Invalid port %i\n", port);
         return -1;
     }
 
@@ -131,6 +114,20 @@ evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *da
     ev_actions[port].handler = handler;
 
     return port;
+}
+
+void unbind_evtchn(evtchn_port_t port)
+{
+    // sanity check
+    if ((port < 0) || (port >= NUM_CHANNELS))
+    {
+        PRINTK("ERROR: Invalid port %i\n", port);
+        return;
+    }
+
+    ev_actions[port].handler = default_handler;
+    wmb();
+    ev_actions[port].data = NULL;
 }
 
 evtchn_port_t bind_virq(uint32_t virq, evtchn_handler_t handler, void *data)
@@ -282,6 +279,12 @@ evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler)
     return port;
 }
 
+void xenevents_unbind_channel(evtchn_port_t port)
+{
+    mask_evtchn(port);
+    unbind_evtchn(port);
+}
+
 void micropv_interrupt_disable(void)
 {
     // mask events
@@ -300,5 +303,20 @@ void micropv_interrupt_enable(void)
     // force channel event (if there is one)
     if (hypervisor_shared_info->vcpu_info[0].evtchn_upcall_pending)
         HYPERVISOR_xen_version(0, NULL);
+}
+
+int xenevents_alloc_channel(int remote_dom, int *port)
+{
+    int rc;
+
+    evtchn_alloc_unbound_t op;
+    op.dom = DOMID_SELF;
+    op.remote_dom = remote_dom;
+    rc = HYPERVISOR_event_channel_op(EVTCHNOP_alloc_unbound, &op);
+    if (rc)
+        PRINTK("ERROR: xenevents_alloc_channel failed with rc=%d", rc);
+    else
+        *port = op.port;
+    return rc;
 }
 

@@ -18,6 +18,7 @@
 /*---------------------------------------------------------------------
   -- project includes (import)
   ---------------------------------------------------------------------*/
+#include "../micropv.h"
 
 /*---------------------------------------------------------------------
   -- project includes (export)
@@ -35,8 +36,15 @@
   -- function prototypes
   ---------------------------------------------------------------------*/
 int xenstore_init(void);
-void xenstore_publish(const char *relative_path, uint32_t value);
-void xenstore_consume(const char *relative_path, uint32_t *value);
+int xenstore_write(xenbus_transaction_t xbt, const char *key, const char *value);
+int xenstore_read(xenbus_transaction_t xbt, const char *key, char *value, size_t value_size, size_t *value_length);
+int xenstore_write_if_different(xenbus_transaction_t xbt, const char *key, const char *value);
+int xenstore_write_integer(xenbus_transaction_t xbt, const char *path, int32_t value);
+int xenstore_read_integer(xenbus_transaction_t xbt, const char *path, int32_t *value);
+int xenstore_transaction_start(xenbus_transaction_t *xbt);
+int xenstore_transaction_end(xenbus_transaction_t xbt, int abort, int *retry);
+void xenstore_wait_for_event(void);
+int xenstore_rm(xenbus_transaction_t xbt, const char *path);
 
 /*---------------------------------------------------------------------
   -- global variables
