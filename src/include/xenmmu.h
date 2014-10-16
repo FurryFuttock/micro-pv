@@ -97,24 +97,6 @@ typedef unsigned long maddr_t;
 void xenmmu_init(void);
 
 /**
- * This calls HYPERCALL_update_va_mapping. As far as I can see this can
- * only remap an existing page. Whenever I try to give it an unmapped
- * (above max_pfn) it seems to fall over. However this does fit in quite
- * nicely with our "minimalist" implementation. We don't do dynamic
- * memory! This may change in the future, but for now we just remap
- * existing pages, i.e. the physical address must be in the image.
- *
- * @param physical_address
- *                 Page address in the virtual machine.
- * @param machine_address
- *                 Page address in the Hypervisor memory.
- * @param readonly Page access privilege
- *
- * @return Pointer to the address of the page in the virtual machine or null on failure
- */
-void *xenmmu_remap_page(uint64_t physical_address, uint64_t machine_address, int readonly);
-
-/**
  * Map an array of machine pages into a contiguous set of pages. See the
  * caveats in the xenmmu_remap_page for restrictions.
  *

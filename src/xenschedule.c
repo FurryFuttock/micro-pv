@@ -151,7 +151,7 @@ void xenscheduler_init(void)
 
 void micropv_exit(void)
 {
-    PRINTK("micropv_exit called!\n");
+    PRINTK("micropv_exit called!");
 
     for (;;)
     {

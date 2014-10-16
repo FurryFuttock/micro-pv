@@ -100,11 +100,18 @@ void micropv_printk(const char *file, long line, const char *format, ...)
         va_end(args);
 
         // send to the console
+        {
+            char d = '[';
+            HYPERVISOR_console_io(CONSOLEIO_write, 1, &d);
+        }
         HYPERVISOR_console_io(CONSOLEIO_write, header_length, header);
         HYPERVISOR_console_io(CONSOLEIO_write, message_length, message);
+        {
+            char d = ']';
+            HYPERVISOR_console_io(CONSOLEIO_write, 1, &d);
+        }
 
         // make sure that the line is terminated
-        if (message[message_length - 1] != '\n')
         {
             static char lf = '\n';
             HYPERVISOR_console_io(CONSOLEIO_write, 1, &lf);
@@ -156,7 +163,7 @@ void hypervisor_start(start_info_t *si)
 
     // let's map the shared info page into our memory map. Here we use the shared_info data area we defined
     // in bootstrap.<arch>.S
-    hypervisor_shared_info = xenmmu_remap_page((unsigned long)&shared_info, hypervisor_start_info.shared_info, 0);
+    hypervisor_shared_info = micropv_remap_page((unsigned long)&shared_info, hypervisor_start_info.shared_info, sizeof(shared_info), 0);
     BUG_ON(hypervisor_shared_info == NULL);
 
     // initialise the event interface -- activates the hypervisor callbacks

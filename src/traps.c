@@ -100,17 +100,17 @@ static void dump_regs(struct pt_regs *regs)
 {
     PRINTK("-------------------- REGISTER FILE --------------------");
     PRINTK("RIP: %04lx:%016lx ", regs->cs & 0xffff, regs->rip);
-    PRINTK("RSP: %04lx:%016lx  EFLAGS: %08lx\n",
+    PRINTK("RSP: %04lx:%016lx  EFLAGS: %08lx",
            regs->ss, regs->rsp, regs->eflags);
-    PRINTK("RAX: %016lx RBX: %016lx RCX: %016lx\n",
+    PRINTK("RAX: %016lx RBX: %016lx RCX: %016lx",
            regs->rax, regs->rbx, regs->rcx);
-    PRINTK("RDX: %016lx RSI: %016lx RDI: %016lx\n",
+    PRINTK("RDX: %016lx RSI: %016lx RDI: %016lx",
            regs->rdx, regs->rsi, regs->rdi);
-    PRINTK("RBP: %016lx R08: %016lx R09: %016lx\n",
+    PRINTK("RBP: %016lx R08: %016lx R09: %016lx",
            regs->rbp, regs->r8, regs->r9);
-    PRINTK("R10: %016lx R11: %016lx R12: %016lx\n",
+    PRINTK("R10: %016lx R11: %016lx R12: %016lx",
            regs->r10, regs->r11, regs->r12);
-    PRINTK("R13: %016lx R14: %016lx R15: %016lx\n",
+    PRINTK("R13: %016lx R14: %016lx R15: %016lx",
            regs->r13, regs->r14, regs->r15);
 }
 
@@ -135,12 +135,12 @@ static void dump_fp_regs(struct pt_regs *regs)
     __asm__(" movq %%xmm14,%0" : "=m" (xmm14));
     __asm__(" movq %%xmm15,%0" : "=m" (xmm15));
     __asm__(" stmxcsr %0" : "=m" (mxcsr));
-    PRINTK("XMM0:  %016lx XMM1:  %016lx XMM2:  %016lx\n", xmm0, xmm1, xmm2);
-    PRINTK("XMM3:  %016lx XMM4:  %016lx XMM5:  %016lx\n", xmm3, xmm4, xmm5);
-    PRINTK("XMM6:  %016lx XMM7:  %016lx XMM8:  %016lx\n", xmm6, xmm7, xmm8);
-    PRINTK("XMM9:  %016lx XMM10: %016lx XMM11: %016lx\n", xmm9, xmm10, xmm11);
-    PRINTK("XMM12: %016lx XMM13: %016lx XMM14: %016lx\n", xmm12, xmm13, xmm14);
-    PRINTK("XMM15: %016lx MXCSR: %016lx\n", xmm15, mxcsr);
+    PRINTK("XMM0:  %016lx XMM1:  %016lx XMM2:  %016lx", xmm0, xmm1, xmm2);
+    PRINTK("XMM3:  %016lx XMM4:  %016lx XMM5:  %016lx", xmm3, xmm4, xmm5);
+    PRINTK("XMM6:  %016lx XMM7:  %016lx XMM8:  %016lx", xmm6, xmm7, xmm8);
+    PRINTK("XMM9:  %016lx XMM10: %016lx XMM11: %016lx", xmm9, xmm10, xmm11);
+    PRINTK("XMM12: %016lx XMM13: %016lx XMM14: %016lx", xmm12, xmm13, xmm14);
+    PRINTK("XMM15: %016lx MXCSR: %016lx", xmm15, mxcsr);
 }
 
 static void do_stack_walk(unsigned long frame_base)
@@ -148,7 +148,7 @@ static void do_stack_walk(unsigned long frame_base)
     PRINTK("-------------------- STACK WALK    --------------------");
     unsigned long *frame = (void*) frame_base;
     PRINTK("base is %#lx ", frame_base);
-    PRINTK("caller is %#lx\n", frame[1]);
+    PRINTK("caller is %#lx", frame[1]);
     //if (frame[0])
     //    do_stack_walk(frame[0]);
 }
@@ -180,7 +180,7 @@ static void dump_mem(unsigned long addr)
             buffer[18 + j + 2] = ' ';
         }
         buffer[67] = 0;
-        PRINTK("%s\n", buffer);
+        PRINTK("%s", buffer);
     }
 }
 
@@ -204,12 +204,12 @@ static void dump_context(struct pt_regs *regs)
   ---------------------------------------------------------------------*/
 
 /* Dummy implementation.  Should actually do something */
-void do_divide_error(struct pt_regs *regs)                  { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_debug(struct pt_regs *regs)                         { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_int3(struct pt_regs *regs)                          { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_overflow(struct pt_regs *regs)                      { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_bounds(struct pt_regs *regs)                        { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_invalid_op(struct pt_regs *regs)                    { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_divide_error(struct pt_regs *regs)                  { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_debug(struct pt_regs *regs)                         { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_int3(struct pt_regs *regs)                          { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_overflow(struct pt_regs *regs)                      { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_bounds(struct pt_regs *regs)                        { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_invalid_op(struct pt_regs *regs)                    { PRINTK("%s", __FUNCTION__); dump_context(regs); }
 
 void do_device_not_available(struct pt_regs *regs)
 {
@@ -219,20 +219,20 @@ void do_device_not_available(struct pt_regs *regs)
     // we don't have a handler so crash
     else
     {
-        PRINTK("%s\n", __FUNCTION__);
+        PRINTK("%s", __FUNCTION__);
         dump_context(regs);
     }
 }
 
-void do_coprocessor_segment_overrun(struct pt_regs *regs)   { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_invalid_TSS(struct pt_regs *regs)                   { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_segment_not_present(struct pt_regs *regs)           { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_stack_segment(struct pt_regs *regs)                 { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_general_protection(struct pt_regs *regs)            { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_coprocessor_segment_overrun(struct pt_regs *regs)   { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_invalid_TSS(struct pt_regs *regs)                   { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_segment_not_present(struct pt_regs *regs)           { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_stack_segment(struct pt_regs *regs)                 { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_general_protection(struct pt_regs *regs)            { PRINTK("%s", __FUNCTION__); dump_context(regs); }
 
 void do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {
-    PRINTK("%s\n", __FUNCTION__);
+    PRINTK("%s", __FUNCTION__);
 
     unsigned long addr = read_cr2();
     static volatile int handling_pg_fault = 0;
@@ -242,14 +242,14 @@ void do_page_fault(struct pt_regs *regs, unsigned long error_code)
        a recursive fault */
     if(handling_pg_fault == 1)
     {
-        PRINTK("Page fault in pagetable walk (access to invalid memory?).\n");
+        PRINTK("Page fault in pagetable walk (access to invalid memory?).");
         struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_crash };
         HYPERVISOR_sched_op(SCHEDOP_shutdown, &sched_shutdown);
     }
     handling_pg_fault++;
     barrier();
 
-    PRINTK("Page fault at linear address %p, rip %p, regs %p, sp %p, our_sp %p, code %lx\n",
+    PRINTK("Page fault at linear address %p, rip %p, regs %p, sp %p, our_sp %p, code %lx",
            (void *)addr, (void *)regs->rip, regs, (void *)regs->rsp, &addr, error_code);
 
     dump_context(regs);
@@ -258,16 +258,16 @@ void do_page_fault(struct pt_regs *regs, unsigned long error_code)
     handling_pg_fault--;
 }
 
-void do_coprocessor_error(struct pt_regs *regs)             { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_coprocessor_error(struct pt_regs *regs)             { PRINTK("%s", __FUNCTION__); dump_context(regs); }
 void do_simd_coprocessor_error(struct pt_regs *regs)
 {
-    PRINTK("%s\n", __FUNCTION__);
+    PRINTK("%s", __FUNCTION__);
     dump_context(regs);
     //__asm__ volatile (" fninit");
 }
-void do_alignment_check(struct pt_regs *regs)               { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_spurious_interrupt_bug(struct pt_regs *regs)        { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
-void do_machine_check(struct pt_regs *regs)                 { PRINTK("%s\n", __FUNCTION__); dump_context(regs); }
+void do_alignment_check(struct pt_regs *regs)               { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_spurious_interrupt_bug(struct pt_regs *regs)        { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_machine_check(struct pt_regs *regs)                 { PRINTK("%s", __FUNCTION__); dump_context(regs); }
 
 /*
  * Submit a virtual IDT to teh hypervisor. This consists of tuples

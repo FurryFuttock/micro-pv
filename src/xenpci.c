@@ -136,7 +136,7 @@ int micropv_pci_map_bus(micropv_pci_handle_t *handle)
 	xenbus_transaction_t xbt = 0;
 
 	// set default values so we can cleanup OK
-	handle->status = micropv_pci_initialisation_none;
+	handle->status = micropv_pci_run_stopped;
 	handle->bus->backend_domain = -1;
 	handle->bus->grant_ref = -1;
 	handle->bus->port = handle->bus->channel = -1;
@@ -203,7 +203,7 @@ int micropv_pci_map_bus(micropv_pci_handle_t *handle)
 		goto fail;
 
 	// if we get here then we have initialised correctly
-	handle->status = 1;
+	handle->status = micropv_pci_run_initialisation_backend;
 
 	return 0;
 
@@ -233,8 +233,7 @@ void pci_op(micropv_pci_handle_t *handle, struct xen_pci_op *op)
     *op = info->op;
 }
 
-int pci_conf_read(micropv_pci_handle_t *handle, micropv_pci_device_t *device,
-				  unsigned int off, unsigned int size, unsigned int *val)
+int micropv_pci_conf_read(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int *val)
 {
 	struct xen_pci_op op;
 
@@ -255,6 +254,26 @@ int pci_conf_read(micropv_pci_handle_t *handle, micropv_pci_device_t *device,
 	return 0;
 }
 
+int micropv_pci_conf_write(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int val)
+{
+	struct xen_pci_op op;
+
+	op.cmd = XEN_PCI_OP_conf_write;
+	op.domain = device->domain;
+	op.bus = device->bus;
+	op.devfn = PCI_DEVFN(device->slot, device->fun);
+	op.offset = off;
+	op.size = size;
+	op.value = val;
+
+	pci_op(handle, &op);
+
+	if (op.err)
+		return op.err;
+
+	return 0;
+}
+
 int micropv_pci_scan_bus(micropv_pci_handle_t *handle)
 {
 	char path[strlen(handle->bus->backend_path) + 1 + 5 + 10 + 1];
@@ -266,39 +285,42 @@ int micropv_pci_scan_bus(micropv_pci_handle_t *handle)
 	int d;
 	for (d = 0; (d < num_devs); d++)
 	{
-		char dev[15];
+		char dev[15] = {0};
 		size_t dev_length;
 		snprintf(path, sizeof(path), "%s/vdev-%d", handle->bus->backend_path, d);
 		xenstore_read(XBT_NIL, path, dev, sizeof(dev), &dev_length);
+		PRINTK("Virtual Device=%s", dev);
 
 		char *end, *start = dev;
-		micropv_pci_device_t device;
-		device.domain = strtol(start, &end, 16); start = end + 1;
-		device.bus    = strtol(start, &end, 16); start = end + 1;
-		device.slot   = strtol(start, &end, 16); start = end + 1;
-		device.fun    = strtol(start, &end, 16);
+		handle->device.domain = strtol(start, &end, 16); start = end + 1;
+		handle->device.bus    = strtol(start, &end, 16); start = end + 1;
+		handle->device.slot   = strtol(start, &end, 16); start = end + 1;
+		handle->device.fun    = strtol(start, &end, 16);
 
-		pci_conf_read(handle, &device, 0x00, 2, &device.vendor);
-		pci_conf_read(handle, &device, 0x02, 2, &device.device);
-		pci_conf_read(handle, &device, 0x08, 1, &device.rev);
-		pci_conf_read(handle, &device, 0x0a, 2, &device.class);
+		micropv_pci_conf_read(handle, &handle->device, 0x00, 2, &handle->device.vendor);
+		micropv_pci_conf_read(handle, &handle->device, 0x02, 2, &handle->device.device);
+		micropv_pci_conf_read(handle, &handle->device, 0x08, 1, &handle->device.rev);
+		micropv_pci_conf_read(handle, &handle->device, 0x0a, 2, &handle->device.class);
 
 		PRINTK("%04x:%02x:%02x.%02x %04x: %04x:%04x (rev %02x)",
-			   device.domain, device.bus, device.slot, device.fun,
-			   device.class, device.vendor, device.device, device.rev);
+			   handle->device.domain, handle->device.bus, handle->device.slot, handle->device.fun,
+			   handle->device.class, handle->device.vendor, handle->device.device, handle->device.rev);
 
 		int i;
-		for (i = 0; i < SIZEOF_ARRAY(device.bar); i++)
+		for (i = 0; i < SIZEOF_ARRAY(handle->device.bar); i++)
 		{
-			pci_conf_read(handle, &device, 0x10 + (i << 2), 4, &device.bar[i].raw);
-			if (device.bar[i].io.type)
-				PRINTK("BAR %i: Type=IO Address=%x", i, device.bar[i].io.address);
+			micropv_pci_conf_read(handle, &handle->device, 0x10 + (i << 2), 4, &handle->device.bar[i].raw);
+			if (handle->device.bar[i].io.type)
+				PRINTK("BAR %i: Type=IO Address=%x", i, handle->device.bar[i].io.address);
 			else
-				PRINTK("BAR %i: Type=Memory Locatable=%x Prefetchable=%x Address=%x", i, device.bar[i].memory.locatable, device.bar[i].memory.prefretchable, device.bar[i].memory.address);
+				PRINTK("BAR %i: Type=Memory Locatable=%x Prefetchable=%x Address=%x", i, handle->device.bar[i].memory.locatable, handle->device.bar[i].memory.prefretchable, handle->device.bar[i].memory.address << 4);
 		}
 
 		for (i = 0; (i < handle->bus->probes) && !handle->dispatcher; i++)
-			handle->dispatcher = handle->bus->probe[i](handle, &device);
+		{
+			if ((handle->dispatcher = handle->bus->probe[i](handle, &handle->device)) != NULL)
+				handle->status = micropv_pci_run_initialisation_device;
+		}
 	}
 
 	return 0;

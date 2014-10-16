@@ -94,7 +94,7 @@ static void force_evtchn_callback(void)
 
 static void default_handler(evtchn_port_t port, struct pt_regs *regs, void *ignore)
 {
-    PRINTK("[Port %d] - event received\n", port);
+    PRINTK("[Port %d] - event received", port);
 }
 
 evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *data)
@@ -102,12 +102,12 @@ evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *da
     // sanity check
     if ((port < 0) || (port >= NUM_CHANNELS))
     {
-        PRINTK("ERROR: Invalid port %i\n", port);
+        PRINTK("ERROR: Invalid port %i", port);
         return -1;
     }
 
     if (ev_actions[port].handler != default_handler)
-        PRINTK("WARN: Handler for port %d already registered, replacing\n", port);
+        PRINTK("WARN: Handler for port %d already registered, replacing", port);
 
     ev_actions[port].data = data;
     wmb();
@@ -121,7 +121,7 @@ void unbind_evtchn(evtchn_port_t port)
     // sanity check
     if ((port < 0) || (port >= NUM_CHANNELS))
     {
-        PRINTK("ERROR: Invalid port %i\n", port);
+        PRINTK("ERROR: Invalid port %i", port);
         return;
     }
 
@@ -141,7 +141,7 @@ evtchn_port_t bind_virq(uint32_t virq, evtchn_handler_t handler, void *data)
 
     if ((rc = HYPERVISOR_event_channel_op(EVTCHNOP_bind_virq, &op)) != 0)
     {
-        PRINTK("Failed to bind virtual IRQ %d with rc=%d\n", virq, rc);
+        PRINTK("Failed to bind virtual IRQ %d with rc=%d", virq, rc);
         return -1;
     }
     bind_evtchn(op.port, handler, data);
@@ -165,7 +165,7 @@ static void unmask_evtchn(uint32_t port)
     shared_info_t *s = hypervisor_shared_info;
     vcpu_info_t *vcpu_info = &s->vcpu_info[smp_processor_id()];
 
-    PRINTK("unmask port %d\n", port);
+    PRINTK("unmask port %d", port);
     synch_clear_bit(port, &s->evtchn_mask[0]);
 
     /*
@@ -189,7 +189,7 @@ static int do_event(evtchn_port_t port, struct pt_regs *regs)
 
     if (port >= NUM_CHANNELS)
     {
-        PRINTK("WARN: do_event(): Port number too large: %d\n", port);
+        PRINTK("WARN: do_event(): Port number too large: %d", port);
         return 1;
     }
 

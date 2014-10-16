@@ -154,7 +154,7 @@ static void xenconsole_event_handler(evtchn_port_t port, struct pt_regs *regs, v
         xenconsole_ring_send(xenconsole_interface(), xenconsole_event(), &chr, 1);
 
         if (chr == '\r')
-            PRINTK("No console input handler.\n");
+            PRINTK("No console input handler.");
         ring->in_cons++;
     }
 #endif

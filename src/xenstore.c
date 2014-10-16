@@ -175,7 +175,7 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     // we are out of sync so fail
     if (msg.req_id != xenstore_req_id)
     {
-        PRINTK("%s invalid request id. Sent=%i, Received=%i\n", coroutine_context->caller, xenstore_req_id, msg.req_id);
+        PRINTK("%s invalid request id. Sent=%i, Received=%i", coroutine_context->caller, xenstore_req_id, msg.req_id);
         return -1;
     }
 
@@ -184,16 +184,16 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     {
         // if we have a text then report it
         if (msg.len > 0)
-            PRINTK("%s ERROR [%i]%.*s\n", coroutine_context->caller, msg.len, msg.len, xenstore_dump);
+            PRINTK("%s ERROR [%i]%.*s", coroutine_context->caller, msg.len, msg.len, xenstore_dump);
         else
-            PRINTK("%s ERROR\n", coroutine_context->caller);
+            PRINTK("%s ERROR", coroutine_context->caller);
         return -2;
     }
 
     // if the response is truncated then we have an error
     if (response && (msg.len > response_size))
     {
-        PRINTK("%s truncated\n", coroutine_context->caller);
+        PRINTK("%s truncated", coroutine_context->caller);
         return 1;
     }
 
@@ -302,7 +302,7 @@ int xenstore_write(xenbus_transaction_t xbt, const char *key, const char *value)
     msg.tx_id = xbt;
     msg.len = key_length + value_length;
 
-    PRINTK("WRITE %s - %s\n", key, value);
+    PRINTK("WRITE %s - %s", key, value);
 
     /* Write the message */
     COROUTINE_DISPATCHER_BEGIN;
@@ -370,7 +370,7 @@ int xenstore_mkdir(xenbus_transaction_t xbt, const char *directory)
     if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
         ((rc = xenstore_transact(&coroutine_context, directory, key_length, NULL, 0, NULL)) != 0))
     {
-        PRINTK("error sending mkdir\n");
+        PRINTK("error sending mkdir");
         return rc;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
@@ -394,7 +394,7 @@ int xenstore_ls(xenbus_transaction_t xbt, const char * key, char *values, size_t
     if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
         ((rc = xenstore_transact(&coroutine_context, key, key_length + 1, NULL, 0, NULL)) != 0))
     {
-        PRINTK("error sending ls\n");
+        PRINTK("error sending ls");
         return rc;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, values, value_size, value_length);
@@ -424,7 +424,7 @@ int xenstore_transaction_start(xenbus_transaction_t *xbt)
     if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
         ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
     {
-        PRINTK("error sending transaction_start\n");
+        PRINTK("error sending transaction_start");
         return rc;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, value, sizeof(value), &value_length);
@@ -454,7 +454,7 @@ int xenstore_transaction_end(xenbus_transaction_t xbt, int abort, int *retry)
     if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
         ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
     {
-        PRINTK("error sending transaction_end\n");
+        PRINTK("error sending transaction_end");
         return rc;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
@@ -482,7 +482,7 @@ int xenstore_rm(xenbus_transaction_t xbt, const char *path)
     if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
         ((rc = xenstore_transact(&coroutine_context, path, path_length, NULL, 0, NULL)) != 0))
     {
-        PRINTK("error sending RM\n");
+        PRINTK("error sending RM");
         return rc;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
@@ -538,7 +538,7 @@ int xenstore_write_integer(xenbus_transaction_t xbt, const char *path, int32_t v
 
     psnprintf(data_value, sizeof(data_value), "%u", value);
     if (xenstore_write(xbt, path, data_value))
-        PRINTK("xenstore_write %s fails %s\r\n", path, xenstore_dump);
+        PRINTK("xenstore_write %s fails %s", path, xenstore_dump);
     else
         rc = 0;
 
@@ -553,7 +553,7 @@ int xenstore_read_integer(xenbus_transaction_t xbt, const char *path, int32_t *v
 
     // check this is there
     if (xenstore_read(xbt, path, data_value, sizeof(data_value) - 1, &data_length))
-        PRINTK("xenstore_read %s fails %s\r\n", path, xenstore_dump);
+        PRINTK("xenstore_read %s fails %s", path, xenstore_dump);
     else
     {
         *value = strtol(data_value, NULL, 10);
@@ -572,7 +572,7 @@ int micropv_is_shutdown(xenbus_transaction_t xbt)
 
     // check this is there
     if (xenstore_read(xbt, path, data_value, sizeof(data_value), &data_length))
-        PRINTK("xenstore_read %s fails %s\r\n", path, xenstore_dump);
+        PRINTK("xenstore_read %s fails %s", path, xenstore_dump);
     else
         rc = data_length > 0;
 

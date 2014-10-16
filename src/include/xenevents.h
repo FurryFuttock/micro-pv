@@ -15,7 +15,7 @@
 #define ASSERT(x)                                              \
 do {                                                           \
     if (!(x)) {                                                \
-        PRINTK("ASSERTION FAILED: %s at %s:%d.\n",             \
+        PRINTK("ASSERTION FAILED: %s at %s:%d.",             \
                # x ,                                           \
                __FILE__,                                       \
                __LINE__);                                      \

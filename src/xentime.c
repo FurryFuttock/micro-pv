@@ -170,7 +170,7 @@ int micropv_time_gettimeofday(struct timeval *tv, void *tz)
 
 void xentime_init(void)
 {
-    PRINTK("Initialising timer interface\n");
+    PRINTK("Initialising timer interface");
 
     // initialise the time
     get_time_values_from_xen();

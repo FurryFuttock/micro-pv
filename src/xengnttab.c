@@ -228,14 +228,14 @@ int micropv_shared_memory_consume(micropv_grant_handle_t *handle, const char *na
     // map the reference
     BUG_ON(interface == NULL);
     int rc = interface->xengnttab_map(handle, 0, ref, buffer, 0);
-    PRINTK("grant_handle %i for physical_address=%p mapped to dom=0 with grant_ref=%i\n", handle->handle, buffer, ref);
+    PRINTK("grant_handle %i for physical_address=%p mapped to dom=0 with grant_ref=%i", handle->handle, buffer, ref);
     return rc;
 }
 
 void micropv_shared_memory_unconsume(micropv_grant_handle_t *handle, void *buffer)
 {
     BUG_ON(interface == NULL);
-    PRINTK("Unmap handle=%i for physical_address=%p\n", handle->handle, buffer);
+    PRINTK("Unmap handle=%i for physical_address=%p", handle->handle, buffer);
     interface->xengnttab_unmap(handle, buffer);
 }
 
@@ -263,7 +263,7 @@ void xengnttab_unshare(grant_ref_t ref)
 {
     // unmap the frame
     BUG_ON(interface == NULL);
-    PRINTK("unmapping grant_ref=%i\n", ref);
+    PRINTK("unmapping grant_ref=%i", ref);
     interface->xengnttab_unshare(ref);
 
     // get the index of the next available grant entry
@@ -301,7 +301,7 @@ grant_ref_t xengnttab_share(int remote_dom, const void *buffer, int readonly)
     // map the frame
     BUG_ON(interface == NULL);
     interface->xengnttab_share(remote_dom, ref, mfn, readonly);
-    PRINTK("physical_address=%p mapped to machine_address=%lx with grant_ref=%i\n", buffer, mfn << __PAGE_SHIFT, ref);
+    PRINTK("physical_address=%p mapped to machine_address=%lx with grant_ref=%i", buffer, mfn << __PAGE_SHIFT, ref);
 
     return ref;
 }
@@ -320,7 +320,7 @@ static void xengnttab_list_v1()
     grant_entry_v1_t *gnttab_table = (grant_entry_v1_t *) grant_table_pages;
     for (int ref = 0; ref < interface->nr_grant_entries; ref++)
         if (gnttab_table[ref].flags)
-            PRINTK("ref=%i, frame=%i, dom=%i, flags=%i\n", ref, gnttab_table[ref].frame, gnttab_table[ref].domid, gnttab_table[ref].flags);
+            PRINTK("ref=%i, frame=%i, dom=%i, flags=%i", ref, gnttab_table[ref].frame, gnttab_table[ref].domid, gnttab_table[ref].flags);
 }
 
 static void xengnttab_list_v2()
@@ -328,7 +328,7 @@ static void xengnttab_list_v2()
     grant_entry_v2_t *gnttab_table = (grant_entry_v2_t *) grant_table_pages;
     for (int ref = 0; ref < interface->nr_grant_entries; ref++)
         if (gnttab_table[ref].full_page.hdr.flags)
-            PRINTK("ref=%i, frame=%lii, dom=%i, flags=%i\n", ref, gnttab_table[ref].full_page.frame, gnttab_table[ref].full_page.hdr.domid, gnttab_table[ref].full_page.hdr.flags);
+            PRINTK("ref=%i, frame=%lii, dom=%i, flags=%i", ref, gnttab_table[ref].full_page.frame, gnttab_table[ref].full_page.hdr.domid, gnttab_table[ref].full_page.hdr.flags);
 }
 
 void micropv_shared_memory_list()
@@ -344,7 +344,7 @@ int xengnttab_init()
     gnttab_version.dom = DOMID_SELF;
     int rc = HYPERVISOR_grant_table_op(GNTTABOP_get_version, &gnttab_version, 1);
     BUG_ON(rc != 0);
-    PRINTK("We are using grant version %i\n", gnttab_version.version);
+    PRINTK("We are using grant version %i", gnttab_version.version);
 
     // select the interface for this version
     switch (gnttab_version.version)
@@ -370,7 +370,7 @@ int xengnttab_init()
         for (int i = 0; i < NR_GRANT_FRAMES; i++)
         {
             PRINTK("frame[%i]=%lx mapped to %p", i, table_frames[i], grant_table_pages[i]);
-            void *rc = xenmmu_remap_page((uint64_t)grant_table_pages[i], table_frames[i] << __PAGE_SHIFT, 0);
+            void *rc = micropv_remap_page((uint64_t)grant_table_pages[i], table_frames[i] << __PAGE_SHIFT, __PAGE_SIZE, 0);
             BUG_ON(rc == NULL);
         }
     }

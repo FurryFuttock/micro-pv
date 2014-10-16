@@ -120,7 +120,13 @@ typedef struct micropv_pci_device_t
     } bar[4];
 } micropv_pci_device_t;
 
-typedef int (* micropv_pci_dispatcher_t)(struct micropv_pci_handle_t *handle);
+/**
+ * Can't seem to wrap my brain wround generating a typedef for a
+ * function that returns a point to itself, so cast to void *
+ *
+ * TODO: CORRECT THIS
+ */
+typedef void * (*micropv_pci_dispatcher_t)(struct micropv_pci_handle_t *);
 
 typedef struct micropv_pci_bus_t
 {
@@ -186,11 +192,13 @@ typedef struct micropv_pci_bus_t
     int probes;
 } micropv_pci_bus_t;
 
-enum micropv_pci_initialisation_status_t
+enum micropv_pci_run_status_t
 {
-    micropv_pci_initialisation_none,
-    micropv_pci_initialisation_backend,
-    micropv_pci_initialisation_device,
+    micropv_pci_run_stopped,
+    micropv_pci_run_initialisation_backend,
+    micropv_pci_run_initialisation_device,
+    micropv_pci_run_running,
+    micropv_pci_run_stopping,
 };
 
 typedef struct micropv_pci_handle_t
@@ -200,7 +208,7 @@ typedef struct micropv_pci_handle_t
      *
      * @author smartin (7/22/2014)
      */
-    enum micropv_pci_initialisation_status_t status;
+    enum micropv_pci_run_status_t status;
 
     /**
      * Definition of the PCI bus
@@ -208,6 +216,17 @@ typedef struct micropv_pci_handle_t
      * @author smartin (7/22/2014)
      */
     micropv_pci_bus_t *bus;
+
+    /**
+     * Device data. This is set up to just handle one PCI device.
+     * This is enough for me as I only have one, however other
+     * people will have to generalize this, either defining this as
+     * a fixed array or having the caller assign an array. I think
+     * the second option is better.
+     *
+     * @author smartin (7/23/2014)
+     */
+    micropv_pci_device_t device;
 
     /**
      * Function to dispatch PCI device on this PCI bus. This is set
@@ -375,6 +394,24 @@ void micropv_shared_memory_unconsume(micropv_grant_handle_t *handle, void *buffe
 
 void micropv_shared_memory_list();
 
+/**
+ * This calls HYPERCALL_update_va_mapping. As far as I can see this can
+ * only remap an existing page. Whenever I try to give it an unmapped
+ * (above max_pfn) it seems to fall over. However this does fit in quite
+ * nicely with our "minimalist" implementation. We don't do dynamic
+ * memory! This may change in the future, but for now we just remap
+ * existing pages, i.e. the physical address must be in the image.
+ *
+ * @param physical_address
+ *                 Page address in the virtual machine.
+ * @param machine_address
+ *                 Page address in the Hypervisor memory.
+ * @param readonly Page access privilege
+ *
+ * @return Pointer to the address of the page in the virtual machine or null on failure
+ */
+void *micropv_remap_page(uint64_t physical_address, uint64_t machine_address, size_t size, int readonly);
+
 //--- HYPERVISOR_STATUS
 
 /**
@@ -419,6 +456,9 @@ void micropv_pci_unmap_bus(micropv_pci_handle_t *handle);
  * @return int 0 on success, otherwise -1
  */
 int micropv_pci_scan_bus(micropv_pci_handle_t *handle);
+
+int micropv_pci_conf_read(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int *val);
+int micropv_pci_conf_write(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int val);
 
 /*---------------------------------------------------------------------
   -- global variables
