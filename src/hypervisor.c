@@ -12,6 +12,10 @@
 /*---------------------------------------------------------------------
   -- macros (preamble)
   ---------------------------------------------------------------------*/
+#define NANO_SECOND(x)      (x)
+#define MICRO_SECOND(x)     (NANO_SECOND(x) * 1000L)
+#define MILLI_SECOND(x)     (MICRO_SECOND(x) * 1000L)
+#define SECOND(x)           (MILLI_SECOND(x) * 1000L)
 
 /*---------------------------------------------------------------------
   -- standard includes
@@ -90,8 +94,14 @@ void micropv_printk(const char *file, long line, const char *format, ...)
     if (message_length > 0)
     {
         // create the header
-        char header[strlen(file)+ 10];
-        int header_length = psnprintf(header, sizeof(header), "%s@%.5li: ", file, line);
+        char header[strlen(file)+ 30];
+        struct timeval tv;
+        micropv_time_gettimeofday(&tv, NULL);
+        uint64_t millisecond = tv.tv_usec / 1000;
+        uint64_t second = tv.tv_sec % 60; tv.tv_sec /= 60;
+        uint64_t minute = tv.tv_sec % 60; tv.tv_sec /= 60;
+        uint64_t hour = tv.tv_sec % 24;
+        int header_length = psnprintf(header, sizeof(header), "%02lu:%02lu:%02lu.%03lu %s@%.5li: ", hour, minute, second, millisecond, file, line);
 
         // create the output string
         char message[message_length + 1];
@@ -100,19 +110,12 @@ void micropv_printk(const char *file, long line, const char *format, ...)
         va_end(args);
 
         // send to the console
-        {
-            char d = '[';
-            HYPERVISOR_console_io(CONSOLEIO_write, 1, &d);
-        }
         HYPERVISOR_console_io(CONSOLEIO_write, header_length, header);
         HYPERVISOR_console_io(CONSOLEIO_write, message_length, message);
-        {
-            char d = ']';
-            HYPERVISOR_console_io(CONSOLEIO_write, 1, &d);
-        }
 
         // make sure that the line is terminated
-        {
+        // I see that long lines in the xl dmesg automatically seem to have a line feed so limit on length
+        if ((header_length + message_length) < 80) {
             static char lf = '\n';
             HYPERVISOR_console_io(CONSOLEIO_write, 1, &lf);
         }

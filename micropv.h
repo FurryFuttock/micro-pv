@@ -57,25 +57,25 @@ struct pt_regs {
     unsigned long r14;
     unsigned long r13;
     unsigned long r12;
-    unsigned long rbp;
-    unsigned long rbx;
+    unsigned long bp;
+    unsigned long bx;
 /* arguments: non interrupts/non tracing syscalls only save upto here*/
     unsigned long r11;
     unsigned long r10;
     unsigned long r9;
     unsigned long r8;
-    unsigned long rax;
-    unsigned long rcx;
-    unsigned long rdx;
-    unsigned long rsi;
-    unsigned long rdi;
-    unsigned long orig_rax;
+    unsigned long ax;
+    unsigned long cx;
+    unsigned long dx;
+    unsigned long si;
+    unsigned long di;
+    unsigned long orig_ax;
 /* end of arguments */
 /* cpu exception frame or undefined */
-    unsigned long rip;
+    unsigned long ip;
     unsigned long cs;
-    unsigned long eflags;
-    unsigned long rsp;
+    unsigned long flags;
+    unsigned long sp;
     unsigned long ss;
 /* top of stack page */
 };
@@ -100,24 +100,7 @@ typedef struct micropv_grant_handle_t
 
 typedef struct micropv_pci_device_t
 {
-    uint32_t domain, bus, slot, fun, vendor, device, rev, class;
-    union
-    {
-        unsigned int raw;
-        struct memory_bar
-        {
-            unsigned int type : 1;
-            unsigned int locatable : 2;
-            unsigned int prefretchable : 1;
-            unsigned int address : 28;
-        } memory;
-        struct io_bar
-        {
-            unsigned int type : 1;
-            unsigned int reserved : 1;
-            unsigned int address : 30;
-        } io;
-    } bar[4];
+    uint32_t domain, bus, slot, fun, vendor, device, rev, class, bar[4];
 } micropv_pci_device_t;
 
 /**
@@ -411,6 +394,27 @@ void micropv_shared_memory_list();
  * @return Pointer to the address of the page in the virtual machine or null on failure
  */
 void *micropv_remap_page(uint64_t physical_address, uint64_t machine_address, size_t size, int readonly);
+
+/**
+ * Convert an address inside the guest machine to an address in the host machine
+ *
+ * @param virtual_address
+ *               Address inside the guest machine
+ *
+ * @return Corresponding address in the host.
+ */
+uint64_t micropv_virtual_to_machine_address(uint64_t virtual_address);
+
+/**
+ * Convert an address inside the host machine to an address in
+ * the guest machine
+ *
+ * @param machine_address
+ *               Address inside the guest machine
+ *
+ * @return Corresponding address in the guest.
+ */
+uint64_t micropv_machine_to_virtual_address(uint64_t machine_address);
 
 //--- HYPERVISOR_STATUS
 

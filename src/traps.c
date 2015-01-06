@@ -99,15 +99,15 @@ static trap_info_t trap_table[] = {
 static void dump_regs(struct pt_regs *regs)
 {
     PRINTK("-------------------- REGISTER FILE --------------------");
-    PRINTK("RIP: %04lx:%016lx ", regs->cs & 0xffff, regs->rip);
+    PRINTK("RIP: %04lx:%016lx ", regs->cs & 0xffff, regs->ip);
     PRINTK("RSP: %04lx:%016lx  EFLAGS: %08lx",
-           regs->ss, regs->rsp, regs->eflags);
+           regs->ss, regs->sp, regs->flags);
     PRINTK("RAX: %016lx RBX: %016lx RCX: %016lx",
-           regs->rax, regs->rbx, regs->rcx);
+           regs->ax, regs->bx, regs->cx);
     PRINTK("RDX: %016lx RSI: %016lx RDI: %016lx",
-           regs->rdx, regs->rsi, regs->rdi);
+           regs->dx, regs->si, regs->di);
     PRINTK("RBP: %016lx R08: %016lx R09: %016lx",
-           regs->rbp, regs->r8, regs->r9);
+           regs->bp, regs->r8, regs->r9);
     PRINTK("R10: %016lx R11: %016lx R12: %016lx",
            regs->r10, regs->r11, regs->r12);
     PRINTK("R13: %016lx R14: %016lx R15: %016lx",
@@ -189,10 +189,10 @@ static void dump_context(struct pt_regs *regs)
     // log context
     dump_regs(regs);
     dump_fp_regs(regs);
-    do_stack_walk(regs->rbp);
-    dump_mem(regs->rsp);
-    dump_mem(regs->rbp);
-    dump_mem(regs->rip);
+    do_stack_walk(regs->bp);
+    dump_mem(regs->sp);
+    dump_mem(regs->bp);
+    dump_mem(regs->ip);
 
     // stop
     struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_crash };
@@ -250,7 +250,7 @@ void do_page_fault(struct pt_regs *regs, unsigned long error_code)
     barrier();
 
     PRINTK("Page fault at linear address %p, rip %p, regs %p, sp %p, our_sp %p, code %lx",
-           (void *)addr, (void *)regs->rip, regs, (void *)regs->rsp, &addr, error_code);
+           (void *)addr, (void *)regs->ip, regs, (void *)regs->sp, &addr, error_code);
 
     dump_context(regs);
 

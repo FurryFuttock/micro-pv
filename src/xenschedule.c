@@ -93,7 +93,7 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
     xentime_update();
 
     // store the current stack data
-    unsigned long rsp = regs->rsp;
+    unsigned long sp = regs->sp;
     unsigned long ss = regs->ss;
 
     // call the guest OS handler. The guest returns the time to the next interrupt,
@@ -101,10 +101,10 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
     timer_period = micropv_scheduler_callback(regs);
 
     // if the timer irq changed the stack then apply the changes
-    if ((rsp != regs->rsp) || (ss != regs->ss))
+    if ((sp != regs->sp) || (ss != regs->ss))
     {
         // switch stacks in the hypervisor
-        HYPERVISOR_stack_switch(regs->ss, regs->rsp);
+        HYPERVISOR_stack_switch(regs->ss, regs->sp);
 
         // set CR0.TS so that the next time that there is an SSE (floating point) access
         // we get a device_disabled trap
@@ -120,10 +120,10 @@ void micropv_scheduler_initialise_context(struct pt_regs *regs, void *start_ptr,
     // we assume that everything is in the same data area, so we initialise the stack segment and
     // code segment to the same as we have
     { uint64_t ss; __asm__("\t movq %%ss,%0" : "=r"(ss)); regs->ss = ss; }  // preserve the current stack segment
-    regs->rsp = (uint64_t)(stack_ptr + stack_size) & ~0xf;                  // top of stack (16 byte aligned)
-    regs->eflags = 0x200;                                               // flags - enable interrupts
+    regs->sp = (uint64_t)(stack_ptr + stack_size) & ~0xf;                  // top of stack (16 byte aligned)
+    regs->flags = 0x200;                                               // flags - enable interrupts
     { uint64_t cs; __asm__("\t movq %%cs,%0" : "=r"(cs)); regs->cs = cs; }  // preserve the current code segment
-    regs->rip = (uint64_t)start_ptr;                                    // instruction pointer
+    regs->ip = (uint64_t)start_ptr;                                    // instruction pointer
 }
 
 void micropv_scheduler_yield(void)

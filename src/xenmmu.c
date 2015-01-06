@@ -78,7 +78,6 @@ void *micropv_remap_page(uint64_t physical_address, uint64_t machine_address, si
 
     // round up to a number of pages
     int pages = (size + __PAGE_SIZE - 1) >> __PAGE_SHIFT;
-    PRINTK("map %i pages", pages);
 
     // Update the mapping. I have had problems using a readonly mapping, however I'm not sure whether that was to do with
     // this call, or the page that was being mapped.
@@ -88,12 +87,12 @@ void *micropv_remap_page(uint64_t physical_address, uint64_t machine_address, si
         int rc = HYPERVISOR_update_va_mapping(physical_address + (page << __PAGE_SHIFT), __pte((machine_address  + (page << __PAGE_SHIFT)) | pte_type), UVMF_INVLPG);
         if (rc)
         {
-            PRINTK("FAIL mapping physical address %lx to machine address %lx", physical_address + (page << __PAGE_SHIFT), machine_address + (page << __PAGE_SHIFT));
+            PRINTK("FAIL mapping physical address 0x%lx to machine address 0x%lx", physical_address + (page << __PAGE_SHIFT), machine_address + (page << __PAGE_SHIFT));
             PRINTK("HYPERVISOR_update_va_mapping returns %i", rc);
             return NULL;
         }
     }
-    PRINTK("Physical address %lx mapped to machine address %lx for a length of %i pages", physical_address, machine_address, pages);
+    PRINTK("Physical address 0x%lx mapped to machine address 0x%lx for a length of %i pages", physical_address, machine_address, pages);
     return (void*)physical_address;
 }
 
@@ -111,5 +110,24 @@ void *xenmmu_map_frames(uint64_t mfn[], size_t mfn_size, int readonly)
 
     // return a pointer to this buffer
     return physical_ptr;
+}
+
+uint64_t micropv_virtual_to_machine_address(uint64_t virtual_address)
+{
+    uint64_t offset = virtual_address & ((1 << L1_PAGETABLE_SHIFT) - 1);
+    uint64_t physical_address = to_phys(virtual_address);
+    uint64_t physical_frame_number = PFN_DOWN(physical_address);
+    uint64_t machine_frame_number = pfn_to_mfn(physical_frame_number);
+    return (machine_frame_number << L1_PAGETABLE_SHIFT) | offset;
+}
+
+uint64_t micropv_machine_to_virtual_address(uint64_t machine_address)
+{
+    uint64_t offset = machine_address  & ((1 << L1_PAGETABLE_SHIFT) - 1);
+    uint64_t machine_frame_number = machine_address >> L1_PAGETABLE_SHIFT;
+    uint64_t physical_frame_number = mfn_to_pfn(machine_frame_number);
+    uint64_t physical_address = physical_frame_number << L1_PAGETABLE_SHIFT;
+    uint64_t virtual_address = (uint64_t)to_virt(physical_address);
+    return virtual_address | offset;
 }
 
