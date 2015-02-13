@@ -228,7 +228,24 @@ void do_coprocessor_segment_overrun(struct pt_regs *regs)   { PRINTK("%s", __FUN
 void do_invalid_TSS(struct pt_regs *regs)                   { PRINTK("%s", __FUNCTION__); dump_context(regs); }
 void do_segment_not_present(struct pt_regs *regs)           { PRINTK("%s", __FUNCTION__); dump_context(regs); }
 void do_stack_segment(struct pt_regs *regs)                 { PRINTK("%s", __FUNCTION__); dump_context(regs); }
-void do_general_protection(struct pt_regs *regs)            { PRINTK("%s", __FUNCTION__); dump_context(regs); }
+void do_general_protection(struct pt_regs *regs)
+{
+    if (*(unsigned char *)regs->ip == 0xfa)
+    {
+        micropv_interrupt_disable();
+        regs->ip++;
+    }
+    else if (*(unsigned char *)regs->ip == 0xfb)
+    {
+        micropv_interrupt_enable();
+        regs->ip++;
+    }
+    else
+    {
+        PRINTK("%s", __FUNCTION__);
+        dump_context(regs);
+    }
+}
 
 void do_page_fault(struct pt_regs *regs, unsigned long error_code)
 {

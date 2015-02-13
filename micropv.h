@@ -20,9 +20,12 @@
 /*---------------------------------------------------------------------
   -- standard includes
   ---------------------------------------------------------------------*/
+#if !defined(LINUX) && !defined(__KERNEL__)
 #include <stdint.h>
+#include <stdarg.h>
 #include <sys/time.h>
 #include <xen/grant_table.h>
+#endif
 
 /*---------------------------------------------------------------------
   -- project includes (import)
@@ -46,6 +49,7 @@ struct micropv_pci_bus_t;
   -- data types
   ---------------------------------------------------------------------*/
 
+#if !defined(LINUX) && !defined(__KERNEL__)
 /**
  * This is the processor register file. I thought about leaving
  * this as an opaque structure, however I think that it is more
@@ -79,6 +83,9 @@ struct pt_regs {
     unsigned long ss;
 /* top of stack page */
 };
+#else
+typedef uint32_t grant_ref_t;
+#endif
 
 enum xen_register_file
 {
@@ -301,6 +308,19 @@ uint64_t micropv_time_monotonic_clock(void);
  * @param format The standard print format to be applied to the following parameters
  */
 void micropv_printk(const char *file, long line, const char *format, ...) __attribute__((format (printf, 3, 4)));
+
+/**
+ * Kernel print routine. Whatever is written here is available in the
+ * Xen dmesg log for this VM.
+ *
+ * @param file   The name of the source file from which this function is called.
+ *               Use the builtin __FILE__ macro.
+ * @param line   The line in the file where this function is called from. Use the
+ *               builtin __LINE__ macro.
+ * @param format The standard print format to be applied to the following parameters
+ * @param args  va_list of arguments to the format
+ */
+void micropv_printkv(const char *file, long line, const char *format, va_list args);
 
 /**
  * Check whether there is anything in the Xen console read buffer that can be read.

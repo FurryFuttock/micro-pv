@@ -80,15 +80,16 @@ start_info_t hypervisor_start_info;
   -- public functions
   ---------------------------------------------------------------------*/
 
-void micropv_printk(const char *file, long line, const char *format, ...)
+void micropv_printkv(const char *file, long line, const char *format, va_list args)
 {
-    va_list args;
+    va_list args0;;
     int message_length;
 
+    // preserve the args
+    va_copy(args0, args);
+
     // process the format once to get the string length
-    va_start(args, format);
     message_length = pvsnprintf(NULL, 0, format, args);
-    va_end(args);
 
     // if we have a string then print it
     if (message_length > 0)
@@ -103,11 +104,12 @@ void micropv_printk(const char *file, long line, const char *format, ...)
         uint64_t hour = tv.tv_sec % 24;
         int header_length = psnprintf(header, sizeof(header), "%02lu:%02lu:%02lu.%03lu %s@%.5li: ", hour, minute, second, millisecond, file, line);
 
+        // make sure we are on the original args
+        va_copy(args,  args0);
+
         // create the output string
         char message[message_length + 1];
-        va_start(args, format);
         message_length = pvsnprintf(message, message_length + 1, format, args);
-        va_end(args);
 
         // send to the console
         HYPERVISOR_console_io(CONSOLEIO_write, header_length, header);
@@ -120,6 +122,14 @@ void micropv_printk(const char *file, long line, const char *format, ...)
             HYPERVISOR_console_io(CONSOLEIO_write, 1, &lf);
         }
     }
+}
+
+void micropv_printk(const char *file, long line, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    micropv_printkv(file, line, format, args);
+    va_end(args);
 }
 
 static void hypervisor_setup_xen_features(void)
