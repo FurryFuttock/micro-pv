@@ -160,7 +160,6 @@ int micropv_time_gettimeofday(struct timeval *tv, void *tz)
     uint64_t nsec = micropv_time_monotonic_clock();
     nsec += shadow_ts.tv_nsec;
 
-
     tv->tv_sec = shadow_ts.tv_sec;
     tv->tv_sec += NSEC_TO_SEC(nsec);
     tv->tv_usec = NSEC_TO_USEC(nsec % 1000000000UL);

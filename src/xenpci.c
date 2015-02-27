@@ -54,6 +54,7 @@
   -- local variables
   ---------------------------------------------------------------------*/
 static volatile unsigned long pci_flags = 0;
+static int (*pci_event_callback)() = NULL;
 
 /*---------------------------------------------------------------------
   -- private functions
@@ -65,7 +66,11 @@ static volatile unsigned long pci_flags = 0;
 
 static void pci_event_handler(evtchn_port_t port, struct pt_regs *register_file, void *data)
 {
-    //PRINTK("pci_event");
+    //PRINTK("pci_event port=%i register_file=%p data=%p", port, register_file, data);
+
+    if (pci_event_callback)
+        pci_event_callback();
+
     set_bit(0, &pci_flags);
 }
 
@@ -236,14 +241,14 @@ void pci_op(micropv_pci_handle_t *handle, struct xen_pci_op *op)
     *op = info->op;
 }
 
-int micropv_pci_conf_read(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int *val)
+int micropv_pci_conf_read(micropv_pci_handle_t *handle, unsigned int off, unsigned int size, unsigned int *val)
 {
     struct xen_pci_op op;
 
     op.cmd = XEN_PCI_OP_conf_read;
-    op.domain = device->domain;
-    op.bus = device->bus;
-    op.devfn = PCI_DEVFN(device->slot, device->fun);
+    op.domain = handle->device.domain;
+    op.bus = handle->device.bus;
+    op.devfn = PCI_DEVFN(handle->device.slot, handle->device.fun);
     op.offset = off;
     op.size = size;
 
@@ -257,14 +262,14 @@ int micropv_pci_conf_read(micropv_pci_handle_t *handle, micropv_pci_device_t *de
     return 0;
 }
 
-int micropv_pci_conf_write(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int val)
+int micropv_pci_conf_write(micropv_pci_handle_t *handle, unsigned int off, unsigned int size, unsigned int val)
 {
     struct xen_pci_op op;
 
     op.cmd = XEN_PCI_OP_conf_write;
-    op.domain = device->domain;
-    op.bus = device->bus;
-    op.devfn = PCI_DEVFN(device->slot, device->fun);
+    op.domain = handle->device.domain;
+    op.bus = handle->device.bus;
+    op.devfn = PCI_DEVFN(handle->device.slot, handle->device.fun);
     op.offset = off;
     op.size = size;
     op.value = val;
@@ -300,10 +305,10 @@ int micropv_pci_scan_bus(micropv_pci_handle_t *handle)
         handle->device.slot   = strtol(start, &end, 16); start = end + 1;
         handle->device.fun    = strtol(start, &end, 16);
 
-        micropv_pci_conf_read(handle, &handle->device, 0x00, 2, &handle->device.vendor);
-        micropv_pci_conf_read(handle, &handle->device, 0x02, 2, &handle->device.device);
-        micropv_pci_conf_read(handle, &handle->device, 0x08, 1, &handle->device.rev);
-        micropv_pci_conf_read(handle, &handle->device, 0x0a, 2, &handle->device.class);
+        micropv_pci_conf_read(handle, 0x00, 2, &handle->device.vendor);
+        micropv_pci_conf_read(handle, 0x02, 2, &handle->device.device);
+        micropv_pci_conf_read(handle, 0x08, 1, &handle->device.rev);
+        micropv_pci_conf_read(handle, 0x0a, 2, &handle->device.class);
 
         PRINTK("%04x:%02x:%02x.%02x %04x: %04x:%04x (rev %02x)",
                handle->device.domain, handle->device.bus, handle->device.slot, handle->device.fun,
@@ -312,7 +317,7 @@ int micropv_pci_scan_bus(micropv_pci_handle_t *handle)
         int i;
         for (i = 0; i < SIZEOF_ARRAY(handle->device.bar); i++)
         {
-            micropv_pci_conf_read(handle, &handle->device, 0x10 + (i << 2), 4, &handle->device.bar[i]);
+            micropv_pci_conf_read(handle, 0x10 + (i << 2), 4, &handle->device.bar[i]);
             PRINTK("bar[%i]=%x", i, handle->device.bar[i]);
         }
 
@@ -322,6 +327,45 @@ int micropv_pci_scan_bus(micropv_pci_handle_t *handle)
                 handle->status = micropv_pci_run_initialisation_device;
         }
     }
+
+    return 0;
+}
+
+int micropv_pci_msi_enable(micropv_pci_handle_t *handle, int (*callback)())
+{
+    pci_event_callback = callback;
+
+    struct xen_pci_op op;
+
+    op.cmd = XEN_PCI_OP_enable_msi;
+    op.domain = handle->device.domain;
+    op.bus = handle->device.bus;
+    op.devfn = PCI_DEVFN(handle->device.slot, handle->device.fun);
+
+    pci_op(handle, &op);
+
+    if (op.err)
+        return op.err;
+
+    return 0;
+}
+
+
+int micropv_pci_msi_disable(micropv_pci_handle_t *handle)
+{
+    pci_event_callback = NULL;
+
+    struct xen_pci_op op;
+
+    op.cmd = XEN_PCI_OP_disable_msi;
+    op.domain = handle->device.domain;
+    op.bus = handle->device.bus;
+    op.devfn = PCI_DEVFN(handle->device.slot, handle->device.fun);
+
+    pci_op(handle, &op);
+
+    if (op.err)
+        return op.err;
 
     return 0;
 }

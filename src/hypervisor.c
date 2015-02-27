@@ -132,6 +132,67 @@ void micropv_printk(const char *file, long line, const char *format, ...)
     va_end(args);
 }
 
+void micropv_printk_binary(const char *file, long line, const char *buffer, size_t buffer_len)
+{
+    const int entries_per_line = 0x10;
+    const int entries_per_line_mask = entries_per_line - 1;
+    const int line_length = 3 + (entries_per_line * 2) + (entries_per_line / 4) + 5 + entries_per_line + 2;
+    char debug_buffer[line_length];
+    static const char hex[] = "0123456789abcdef";
+
+    int i = 0;
+    while (i < buffer_len)
+    {
+        int output_index = 0;
+
+        // store header
+        debug_buffer[output_index++] = hex[(i >> 4) & 0xf];
+        debug_buffer[output_index++] = hex[i & 0xf];
+        debug_buffer[output_index++] = ' ';
+
+        // binary output
+        do
+        {
+            debug_buffer[output_index++] = hex[(buffer[i] >> 4) & 0xf];
+            debug_buffer[output_index++] = hex[buffer[i] & 0xf];
+            if ((i & 3) == 3)
+                debug_buffer[output_index++] = ' ';
+            i++;
+        } while ((i & entries_per_line_mask) && (i < buffer_len));
+
+        // fill in remaining blanks
+        while (i & entries_per_line_mask)
+        {
+            debug_buffer[output_index++] = ' ';
+            debug_buffer[output_index++] = ' ';
+            if ((i & 3) == 3)
+                debug_buffer[output_index++] = ' ';
+            i++;
+        }
+
+        // separator
+        debug_buffer[output_index++] = '.';
+        debug_buffer[output_index++] = '.';
+        debug_buffer[output_index++] = '.';
+        debug_buffer[output_index++] = ' ';
+        debug_buffer[output_index++] = '[';
+
+        // text output
+        i -= entries_per_line;
+        do
+        {
+            debug_buffer[output_index++] = (buffer[i] >= ' ') ? buffer[i] : '.';
+            i++;
+        } while ((i & entries_per_line_mask) && (i < buffer_len));
+
+        // terminator
+        debug_buffer[output_index++] = ']';
+        debug_buffer[output_index++] = 0;
+
+        micropv_printk(file, line, "%.*s", output_index, debug_buffer);
+    }
+}
+
 static void hypervisor_setup_xen_features(void)
 {
     xen_feature_info_t fi;

@@ -14,6 +14,7 @@
   -- macros (preamble)
   ---------------------------------------------------------------------*/
 #define PRINTK(format...) micropv_printk(__FILE__, __LINE__, ##format)
+#define PRINTK_BINARY(buffer, buffer_len) micropv_printk_binary(__FILE__, __LINE__, buffer, buffer_len)
 #define XBT_NIL ((xenbus_transaction_t)0)
 #define SIZEOF_ARRAY(x) (sizeof((x)) / sizeof(*x))
 
@@ -323,6 +324,20 @@ void micropv_printk(const char *file, long line, const char *format, ...) __attr
 void micropv_printkv(const char *file, long line, const char *format, va_list args);
 
 /**
+ * Kernel print routine. Whatever is written here is available in the
+ * Xen dmesg log for this VM. This will print binary data in a
+ * readable format
+ *
+ * @param file       The name of the source file from which this function is called.
+ *                   Use the builtin __FILE__ macro.
+ * @param line       The line in the file where this function is called from. Use the
+ *                   builtin __LINE__ macro.
+ * @param buffer     The buffer to be printed.
+ * @param buffer_len The number of bytes to be printed.
+ */
+void micropv_printk_binary(const char *file, long line, const char *buffer, size_t buffer_len);
+
+/**
  * Check whether there is anything in the Xen console read buffer that can be read.
  *
  * @return The number of bytes available to be read.
@@ -481,8 +496,10 @@ void micropv_pci_unmap_bus(micropv_pci_handle_t *handle);
  */
 int micropv_pci_scan_bus(micropv_pci_handle_t *handle);
 
-int micropv_pci_conf_read(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int *val);
-int micropv_pci_conf_write(micropv_pci_handle_t *handle, micropv_pci_device_t *device, unsigned int off, unsigned int size, unsigned int val);
+int micropv_pci_conf_read(micropv_pci_handle_t *handle, unsigned int off, unsigned int size, unsigned int *val);
+int micropv_pci_conf_write(micropv_pci_handle_t *handle, unsigned int off, unsigned int size, unsigned int val);
+int micropv_pci_msi_enable(micropv_pci_handle_t *handle, int (*callback)());
+int micropv_pci_msi_disable(micropv_pci_handle_t *handle);
 
 /*---------------------------------------------------------------------
   -- global variables

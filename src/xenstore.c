@@ -34,8 +34,9 @@
 #include "xenstore.h"
 
 /*---------------------------------------------------------------------
-  -- macros (postamble)
+  -- macros
   ---------------------------------------------------------------------*/
+#define XENSTORE_IO_ACTIVE 1
 
 /*---------------------------------------------------------------------
   -- data types
@@ -53,10 +54,12 @@
   -- local variables
   ---------------------------------------------------------------------*/
 static int xenstore_req_id = 0;
+static uint32_t xenstore_flags = 0;
 static char xenstore_dump[XENSTORE_RING_SIZE] = { 0 };
 static char hypervisor_domid[6];
 static evtchn_port_t port = -1;
 static volatile int xenstore_event_fired = 0;
+static xenbus_transaction_t current_xbt = 0;
 
 /*---------------------------------------------------------------------
   -- private functions
@@ -201,13 +204,36 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     return 0;
 }
 
+static int xenstore_request(struct xsd_sockmsg *msg, xenbus_transaction_t xbt)
+{
+    // wait for previous request to finish
+    micropv_interrupt_disable();
+    while ((xenstore_flags & XENSTORE_IO_ACTIVE) || (xbt != current_xbt))
+    {
+        micropv_interrupt_enable();
+        micropv_interrupt_disable();
+    }
+    xenstore_flags |= XENSTORE_IO_ACTIVE;
+    micropv_interrupt_enable();
+
+    // return the next id
+    return ++xenstore_req_id;
+}
+
+static void xenstore_release(void)
+{
+    micropv_interrupt_disable();
+    xenstore_flags &= ~XENSTORE_IO_ACTIVE;
+    micropv_interrupt_enable();
+}
+
 int xenstore_read(xenbus_transaction_t xbt, const char *key, char *value, size_t value_size, size_t *value_length)
 {
     int rc = 0;
     int key_length = strlen(key) + 1;
     struct xsd_sockmsg msg = { 0 };
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.type = XS_READ;
-    msg.req_id = ++xenstore_req_id;
     msg.tx_id = xbt;
     msg.len = key_length;
 
@@ -217,13 +243,16 @@ int xenstore_read(xenbus_transaction_t xbt, const char *key, char *value, size_t
         ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, value, value_size, value_length);
     COROUTINE_DISPATCHER_END;
 
     if (rc < 0)
         *value_length = 0;
+
+    fail:
+        xenstore_release();
 
     return rc;
 }
@@ -234,7 +263,7 @@ int xenstore_get_perms(xenbus_transaction_t xbt, const char *path, char *value, 
     int key_length = strlen(path) + 1;
     struct xsd_sockmsg msg = { 0 };
     msg.type = XS_GET_PERMS;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
@@ -244,13 +273,16 @@ int xenstore_get_perms(xenbus_transaction_t xbt, const char *path, char *value, 
         ((rc = xenstore_transact(&coroutine_context, path, key_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, value, value_size, value_length);
     COROUTINE_DISPATCHER_END;
 
     if (rc < 0)
         *value_length = 0;
+
+    fail:
+        xenstore_release();
 
     return rc;
 }
@@ -262,7 +294,7 @@ int xenstore_set_perms(xenbus_transaction_t xbt, const char *path, const char *v
     int value_length = strlen(values) + 1;
     struct xsd_sockmsg msg = { 0 };
     msg.type = XS_SET_PERMS;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.tx_id = xbt;
     msg.len = key_length + value_length;
 
@@ -273,10 +305,13 @@ int xenstore_set_perms(xenbus_transaction_t xbt, const char *path, const char *v
         ((rc = xenstore_transact(&coroutine_context, values, value_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
     COROUTINE_DISPATCHER_END;
+
+    fail:
+        xenstore_release();
 
     return rc;
 }
@@ -298,7 +333,7 @@ int xenstore_write(xenbus_transaction_t xbt, const char *key, const char *value)
     int value_length = strlen(value);
     struct xsd_sockmsg msg;
     msg.type = XS_WRITE;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.tx_id = xbt;
     msg.len = key_length + value_length;
 
@@ -311,12 +346,14 @@ int xenstore_write(xenbus_transaction_t xbt, const char *key, const char *value)
         ((rc = xenstore_transact(&coroutine_context, value, value_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
     COROUTINE_DISPATCHER_END;
 
-    // success
+    fail:
+        xenstore_release();
+
     return rc;
 }
 
@@ -361,7 +398,7 @@ int xenstore_mkdir(xenbus_transaction_t xbt, const char *directory)
 
     struct xsd_sockmsg msg;
     msg.type = XS_MKDIR;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
@@ -371,12 +408,14 @@ int xenstore_mkdir(xenbus_transaction_t xbt, const char *directory)
         ((rc = xenstore_transact(&coroutine_context, directory, key_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("error sending mkdir");
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
     COROUTINE_DISPATCHER_END;
 
-    // success
+    fail:
+        xenstore_release();
+
     return rc;
 }
 
@@ -386,7 +425,7 @@ int xenstore_ls(xenbus_transaction_t xbt, const char * key, char *values, size_t
     int key_length = strlen(key) + 1;
     struct xsd_sockmsg msg;
     msg.type = XS_DIRECTORY;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
@@ -395,10 +434,13 @@ int xenstore_ls(xenbus_transaction_t xbt, const char * key, char *values, size_t
         ((rc = xenstore_transact(&coroutine_context, key, key_length + 1, NULL, 0, NULL)) != 0))
     {
         PRINTK("error sending ls");
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, values, value_size, value_length);
     COROUTINE_DISPATCHER_END;
+
+    fail:
+        xenstore_release();
 
     return rc;
 }
@@ -415,7 +457,7 @@ int xenstore_transaction_start(xenbus_transaction_t *xbt)
 
     struct xsd_sockmsg msg;
     msg.type = XS_TRANSACTION_START;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, XBT_NIL);
     msg.tx_id = 0;
     msg.len = key_length;
 
@@ -425,14 +467,16 @@ int xenstore_transaction_start(xenbus_transaction_t *xbt)
         ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("error sending transaction_start");
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, value, sizeof(value), &value_length);
     COROUTINE_DISPATCHER_END;
 
     *xbt = strtol(&value[1], NULL, 10);
 
-    // success
+    fail:
+        xenstore_release();
+
     return rc;
 }
 
@@ -445,7 +489,7 @@ int xenstore_transaction_end(xenbus_transaction_t xbt, int abort, int *retry)
 
     struct xsd_sockmsg msg;
     msg.type = XS_TRANSACTION_START;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
@@ -455,7 +499,7 @@ int xenstore_transaction_end(xenbus_transaction_t xbt, int abort, int *retry)
         ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("error sending transaction_end");
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
     COROUTINE_DISPATCHER_END;
@@ -463,7 +507,9 @@ int xenstore_transaction_end(xenbus_transaction_t xbt, int abort, int *retry)
     // repeat?
     *retry = (rc == -2) && msg.len && !strcmp("EAGAIN", xenstore_dump);
 
-    // success
+    fail:
+        xenstore_release();
+
     return rc;
 }
 
@@ -473,7 +519,7 @@ int xenstore_rm(xenbus_transaction_t xbt, const char *path)
     int path_length = strlen(path) + 1;
     struct xsd_sockmsg msg;
     msg.type = XS_RM;
-    msg.req_id = ++xenstore_req_id;
+    msg.req_id = xenstore_request(&msg, xbt);
     msg.tx_id = xbt;
     msg.len = path_length;
 
@@ -483,10 +529,13 @@ int xenstore_rm(xenbus_transaction_t xbt, const char *path)
         ((rc = xenstore_transact(&coroutine_context, path, path_length, NULL, 0, NULL)) != 0))
     {
         PRINTK("error sending RM");
-        return rc;
+        goto fail;
     }
     rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
     COROUTINE_DISPATCHER_END;
+
+    fail:
+        xenstore_release();
 
     return rc;
 }
