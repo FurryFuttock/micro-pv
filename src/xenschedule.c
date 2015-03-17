@@ -57,12 +57,12 @@
 /*---------------------------------------------------------------------
   -- function prototypes
   ---------------------------------------------------------------------*/
-static uint64_t scheduler_callback_dummy(struct pt_regs *regs);
+static uint64_t scheduler_callback_dummy(struct pt_regs *regs, uint64_t deadliner);
 
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
-uint64_t (*micropv_scheduler_callback)(struct pt_regs *regs) = scheduler_callback_dummy;
+uint64_t (*micropv_scheduler_callback)(struct pt_regs *regs, uint64_t deadline) = scheduler_callback_dummy;
 
 /*---------------------------------------------------------------------
   -- local variables
@@ -75,13 +75,16 @@ static evtchn_port_t port = -1;
   -- implementation
   ---------------------------------------------------------------------*/
 
-static uint64_t scheduler_callback_dummy(struct pt_regs *regs)
+static uint64_t scheduler_callback_dummy(struct pt_regs *regs, uint64_t deadliner)
 {
     return TIMER_PERIOD;
 }
 
 static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 {
+    // store the current deadline so we can pass it down
+    uint64_t deadline = timer_deadline;
+
     // set the next timer interrupt event. this must be in the future
     do timer_deadline += timer_period;
     while (timer_deadline < micropv_time_monotonic_clock());
@@ -98,7 +101,7 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 
     // call the guest OS handler. The guest returns the time to the next interrupt,
     // and will alter the register file if it want's to perform a context switch.
-    timer_period = micropv_scheduler_callback(regs);
+    timer_period = micropv_scheduler_callback(regs, deadline);
 
     // if the timer irq changed the stack then apply the changes
     if ((sp != regs->sp) || (ss != regs->ss))

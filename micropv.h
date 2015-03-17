@@ -513,7 +513,7 @@ int micropv_pci_msi_disable(micropv_pci_handle_t *handle);
  *
  * @return The timer interrupt period in nanoseconds.
  */
-extern uint64_t (*micropv_scheduler_callback)(struct pt_regs *regs);
+extern uint64_t (*micropv_scheduler_callback)(struct pt_regs *regs, uint64_t deadline);
 
 /**
  * This is the register where the overlying operating system must store the
