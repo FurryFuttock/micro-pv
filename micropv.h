@@ -390,13 +390,13 @@ void micropv_shared_memory_publish(int remote_dom, const char *name, const void 
  * Consume a shared page. The page MUST be one complete
  * processor page, i.e. declare as char
  * __atribute__((aligned(4096)).
- *
+ * 
  * @param handle Stores the grant context data.
  * @param name   Name of the entry in the Xen store (relative to
  *               this VM)
  * @param buffer Address of the memory to be mapped. This must
  *               be a pointer to a processor page.
- *
+ * 
  * @return 0 on success, otherwise -1.
  */
 int micropv_shared_memory_consume(micropv_grant_handle_t *handle, const char *name, void *buffer);
@@ -461,6 +461,16 @@ uint64_t micropv_machine_to_virtual_address(uint64_t machine_address);
  * @return int <0 on error, 0 if no shutdown request, >0 if shutdown requested
  */
 int micropv_is_shutdown(xenbus_transaction_t xbt);
+
+/**
+ * Check if the host has written all the configuration data
+ *
+ * @author smartin (7/7/2014)
+ *
+ * @return int <0 on error, 0 if not ready, >0 if
+ *         data is ready
+ */
+int micropv_is_ready(xenbus_transaction_t xbt);
 
 //--- PCI interface
 /**

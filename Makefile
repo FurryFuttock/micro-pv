@@ -22,7 +22,8 @@ OBJ_ASM=$(SRC_ASM:.S=.o)
 XEN_INTERFACE_VERSION := 0x00040400
 
 #-- Set compiler/assembler
-CFLAGS  = -c -m64 -std=c99 -Wall -g $(INC_FLAGS) -D__XEN_INTERFACE_VERSION__=$(XEN_INTERFACE_VERSION) -mno-red-zone -fno-builtin -fno-stack-protector -fgnu89-inline -fno-reorder-blocks -fno-asynchronous-unwind-tables
+#CFLAGS  = -c -m64 -std=c99 -Wall -g $(INC_FLAGS) -D__XEN_INTERFACE_VERSION__=$(XEN_INTERFACE_VERSION) -mno-red-zone -fno-builtin -fno-stack-protector -fgnu89-inline -fno-reorder-blocks -fno-asynchronous-unwind-tables
+CFLAGS  = -c -m64 -std=c99 -Wall -g $(INC_FLAGS) -D__XEN_INTERFACE_VERSION__=$(XEN_INTERFACE_VERSION) -mno-red-zone
 ASFLAGS = -c -m64 -D__ASSEMBLY__ $(INC_FLAGS)
 
 #-- What we want to make

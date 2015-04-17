@@ -25,7 +25,6 @@
 #include "xenevents.h"
 #include "xenmmu.h"
 #include "xenconsole.h"
-#include "coroutine.h"
 #include "psnprintf.h"
 
 /*---------------------------------------------------------------------
@@ -87,73 +86,69 @@ static int xenstore_write_request(const char *message, int length)
         return -1;
 
     struct xenstore_domain_interface *xenstore = xenstore_interface();
+    volatile XENSTORE_RING_IDX *head = &xenstore->req_cons;
+    XENSTORE_RING_IDX tail = MASK_XENSTORE_IDX(xenstore->req_prod);
+
     int i;
-    for(i=xenstore->req_prod ; length > 0 ; i++,length--)
+    for (i = 0; i < length; i++)
     {
-        /* Wait for the back end to clear enough space in the buffer */
-        XENSTORE_RING_IDX data;
-        do
-        {
-            data = i - xenstore->req_cons;
+        // wait for space available
+        XENSTORE_RING_IDX next_tail = MASK_XENSTORE_IDX(tail + 1);
+        while (next_tail == *head)
             mb();
-        } while (data >= sizeof(xenstore->req));
-        /* Copy the byte */
-        int ring_index = MASK_XENSTORE_IDX(i);
-        xenstore->req[ring_index] = *message;
-        message++;
+
+        // store data
+        xenstore->req[tail] = message[i];
+        tail = next_tail;
     }
 
     /* Ensure that the data really is in the ring before continuing */
     wmb();
 
     // update the index
-    xenstore->req_prod = i;
+    // XENSTORE doesn't really handle this as a circular buffer, as on ring roll over it
+    // stalls if tail < req_prod
+    xenstore->req_prod += length;
 
     // return success
     return 0;
 }
 
 /* Read a response from the response ring */
-static int xenstore_read_response(char * message, int length)
+static int _xenstore_read_response(char * message, int length)
 {
     struct xenstore_domain_interface *xenstore = xenstore_interface();
+    volatile XENSTORE_RING_IDX *tail = &xenstore->rsp_prod;
+    XENSTORE_RING_IDX head = MASK_XENSTORE_IDX(xenstore->rsp_cons);
+
+    memset(message, 0xff, length);
+
     int i;
-    for(i=xenstore->rsp_cons ; length > 0 ; i++,length--)
+    for (i = 0; i < length; i++)
     {
         /* Wait for the back end put data in the buffer */
-        XENSTORE_RING_IDX data;
-        do
-        {
-            data = xenstore->rsp_prod - i;
+        while (head == MASK_XENSTORE_IDX(*tail))
             mb();
-        } while (data == 0);
 
-        /* Copy the byte */
-        int ring_index = MASK_XENSTORE_IDX(i);
-        *message = xenstore->rsp[ring_index];
-        message++;
+        // read data
+        message[i] = xenstore->rsp[head];
+        head = MASK_XENSTORE_IDX(head + 1);
     }
 
     // update the index
-    xenstore->rsp_cons = i;
+    xenstore->rsp_cons += length;
 
     return 0;
 }
 
-static int xenstore_transact(coroutine_context_t *coroutine_context, const void *request, size_t request_length, char *response, size_t response_size, size_t *response_length)
+static int xenstore_read_response(char *response, size_t response_size, size_t *response_length)
 {
-    // write the message
-    COROUTINE_BEGIN;
-    while (request && request_length)
-        COROUTINE_RETURN(xenstore_write_request(request, request_length));
-    COROUTINE_END;
-
-    // notify the back end
+    // make sure that the command was notified
     xenevents_notify_remote_via_evtchn(xenstore_event());
 
     // read the response header
     struct xsd_sockmsg msg = { 0 };
-    xenstore_read_response((char*)&msg, sizeof(msg));
+    _xenstore_read_response((char *)&msg, sizeof(msg));
 
     // read any response data
     if (msg.len > 0)
@@ -164,13 +159,13 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
             register size_t length = MIN(MASK_XENSTORE_IDX(msg.len), response_size);
             if (response_length)
                 *response_length = length;
-            xenstore_read_response(response, length);
+            _xenstore_read_response(response, length);
         }
 
         // read the remainder
         if (response_size < msg.len)
         {
-            xenstore_read_response(xenstore_dump, msg.len - response_size);
+            _xenstore_read_response(xenstore_dump, msg.len - response_size);
             xenstore_dump[msg.len - response_size] = 0;
         }
     }
@@ -178,7 +173,7 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     // we are out of sync so fail
     if (msg.req_id != xenstore_req_id)
     {
-        PRINTK("%s invalid request id. Sent=%i, Received=%i", coroutine_context->caller, xenstore_req_id, msg.req_id);
+        PRINTK("invalid request id. Sent=%i, Received=%i", xenstore_req_id, msg.req_id);
         return -1;
     }
 
@@ -187,16 +182,16 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     {
         // if we have a text then report it
         if (msg.len > 0)
-            PRINTK("%s ERROR [%i]%.*s", coroutine_context->caller, msg.len, msg.len, xenstore_dump);
+            PRINTK("ERROR [%i]%.*s", msg.len, msg.len, xenstore_dump);
         else
-            PRINTK("%s ERROR", coroutine_context->caller);
+            PRINTK("ERROR no data");
         return -2;
     }
 
     // if the response is truncated then we have an error
     if (response && (msg.len > response_size))
     {
-        PRINTK("%s truncated", coroutine_context->caller);
+        PRINTK("ERROR truncated");
         return 1;
     }
 
@@ -204,7 +199,7 @@ static int xenstore_transact(coroutine_context_t *coroutine_context, const void 
     return 0;
 }
 
-static int xenstore_request(struct xsd_sockmsg *msg, xenbus_transaction_t xbt)
+static int xenstore_request(xenbus_transaction_t xbt)
 {
     // wait for previous request to finish
     micropv_interrupt_disable();
@@ -232,21 +227,19 @@ int xenstore_read(xenbus_transaction_t xbt, const char *key, char *value, size_t
     int rc = 0;
     int key_length = strlen(key) + 1;
     struct xsd_sockmsg msg = { 0 };
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.type = XS_READ;
     msg.tx_id = xbt;
     msg.len = key_length;
 
     // run this as a coroutine
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(key, key_length)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, value, value_size, value_length);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(value, value_size, value_length);
 
     if (rc < 0)
         *value_length = 0;
@@ -263,20 +256,18 @@ int xenstore_get_perms(xenbus_transaction_t xbt, const char *path, char *value, 
     int key_length = strlen(path) + 1;
     struct xsd_sockmsg msg = { 0 };
     msg.type = XS_GET_PERMS;
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
     // run this as a coroutine
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, path, key_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(path, key_length)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, value, value_size, value_length);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(value, value_size, value_length);
 
     if (rc < 0)
         *value_length = 0;
@@ -294,21 +285,19 @@ int xenstore_set_perms(xenbus_transaction_t xbt, const char *path, const char *v
     int value_length = strlen(values) + 1;
     struct xsd_sockmsg msg = { 0 };
     msg.type = XS_SET_PERMS;
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.tx_id = xbt;
     msg.len = key_length + value_length;
 
     // run this as a coroutine
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, path, key_length, NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, values, value_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(path, key_length)) != 0) ||
+        ((rc = xenstore_write_request(values, value_length)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(NULL, 0, NULL);
 
     fail:
         xenstore_release();
@@ -333,23 +322,21 @@ int xenstore_write(xenbus_transaction_t xbt, const char *key, const char *value)
     int value_length = strlen(value);
     struct xsd_sockmsg msg;
     msg.type = XS_WRITE;
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.tx_id = xbt;
     msg.len = key_length + value_length;
 
     PRINTK("WRITE %s - %s", key, value);
 
     /* Write the message */
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, value, value_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(key, key_length)) != 0) ||
+        ((rc = xenstore_write_request(value, value_length)) != 0))
     {
         PRINTK("Error writing message in %s", __FUNCTION__);
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(NULL, 0, NULL);
 
     fail:
         xenstore_release();
@@ -398,20 +385,18 @@ int xenstore_mkdir(xenbus_transaction_t xbt, const char *directory)
 
     struct xsd_sockmsg msg;
     msg.type = XS_MKDIR;
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
     /* Write the message */
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, directory, key_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(directory, key_length)) != 0))
     {
         PRINTK("error sending mkdir");
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(NULL, 0, NULL);
 
     fail:
         xenstore_release();
@@ -425,19 +410,17 @@ int xenstore_ls(xenbus_transaction_t xbt, const char * key, char *values, size_t
     int key_length = strlen(key) + 1;
     struct xsd_sockmsg msg;
     msg.type = XS_DIRECTORY;
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, key, key_length + 1, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(key, key_length)) != 0))
     {
         PRINTK("error sending ls");
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, values, value_size, value_length);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(values, value_size, value_length);
 
     fail:
         xenstore_release();
@@ -457,20 +440,18 @@ int xenstore_transaction_start(xenbus_transaction_t *xbt)
 
     struct xsd_sockmsg msg;
     msg.type = XS_TRANSACTION_START;
-    msg.req_id = xenstore_request(&msg, XBT_NIL);
+    msg.req_id = xenstore_request(XBT_NIL);
     msg.tx_id = 0;
     msg.len = key_length;
 
     /* Write the message */
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(key, key_length)) != 0))
     {
         PRINTK("error sending transaction_start");
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, value, sizeof(value), &value_length);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(value, sizeof(value), &value_length);
 
     *xbt = strtol(&value[1], NULL, 10);
 
@@ -489,20 +470,18 @@ int xenstore_transaction_end(xenbus_transaction_t xbt, int abort, int *retry)
 
     struct xsd_sockmsg msg;
     msg.type = XS_TRANSACTION_START;
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.tx_id = xbt;
     msg.len = key_length;
 
     /* Write the message */
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, key, key_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(key, key_length)) != 0))
     {
         PRINTK("error sending transaction_end");
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(NULL, 0, NULL);
 
     // repeat?
     *retry = (rc == -2) && msg.len && !strcmp("EAGAIN", xenstore_dump);
@@ -519,20 +498,18 @@ int xenstore_rm(xenbus_transaction_t xbt, const char *path)
     int path_length = strlen(path) + 1;
     struct xsd_sockmsg msg;
     msg.type = XS_RM;
-    msg.req_id = xenstore_request(&msg, xbt);
+    msg.req_id = xenstore_request(xbt);
     msg.tx_id = xbt;
     msg.len = path_length;
 
     /* Write the message */
-    COROUTINE_DISPATCHER_BEGIN;
-    if (((rc = xenstore_transact(&coroutine_context, &msg, sizeof(msg), NULL, 0, NULL)) != 0) ||
-        ((rc = xenstore_transact(&coroutine_context, path, path_length, NULL, 0, NULL)) != 0))
+    if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
+        ((rc = xenstore_write_request(path, path_length)) != 0))
     {
         PRINTK("error sending RM");
         goto fail;
     }
-    rc = xenstore_transact(&coroutine_context, NULL, 0, NULL, 0, NULL);
-    COROUTINE_DISPATCHER_END;
+    rc = xenstore_read_response(NULL, 0, NULL);
 
     fail:
         xenstore_release();
@@ -627,3 +604,14 @@ int micropv_is_shutdown(xenbus_transaction_t xbt)
 
     return rc;
 }
+
+int micropv_is_ready(xenbus_transaction_t xbt)
+{
+    int32_t value = 0;
+
+    if (xenstore_read_integer(xbt, "data/ready", &value))
+        return -1;
+    else
+        return value;
+}
+
