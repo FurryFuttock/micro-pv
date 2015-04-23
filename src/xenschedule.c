@@ -57,27 +57,63 @@
 /*---------------------------------------------------------------------
   -- function prototypes
   ---------------------------------------------------------------------*/
-static uint64_t scheduler_callback_dummy(struct pt_regs *regs, uint64_t deadliner);
+static uint64_t scheduler_timer_dummy(struct pt_regs *regs, uint64_t deadliner);
+static void scheduler_yield_dummy(struct pt_regs *regs);
 
 /*---------------------------------------------------------------------
   -- global variables
   ---------------------------------------------------------------------*/
-uint64_t (*micropv_scheduler_callback)(struct pt_regs *regs, uint64_t deadline) = scheduler_callback_dummy;
+uint64_t (*micropv_scheduler_timer_callback)(struct pt_regs *regs, uint64_t deadline) = scheduler_timer_dummy;
+void (*micropv_scheduler_yield_callback)(struct pt_regs *regs) = scheduler_yield_dummy;
 
 /*---------------------------------------------------------------------
   -- local variables
   ---------------------------------------------------------------------*/
 static uint64_t timer_deadline = 0;
 static uint64_t timer_period = TIMER_PERIOD;
-static evtchn_port_t port = -1;
+static evtchn_port_t timer_port = -1;
+static evtchn_port_t yield_port = -1;
+static int in_yield = 0;
 
 /*---------------------------------------------------------------------
   -- implementation
   ---------------------------------------------------------------------*/
 
-static uint64_t scheduler_callback_dummy(struct pt_regs *regs, uint64_t deadliner)
+static uint64_t scheduler_timer_dummy(struct pt_regs *regs, uint64_t deadline)
 {
     return TIMER_PERIOD;
+}
+
+static void scheduler_yield_dummy(struct pt_regs *regs)
+{
+}
+
+static void yield_handler(uint32_t port, struct pt_regs *regs, void *context)
+{
+    // only run this if we are the result of a yield. When you bind to an event channel you get an initial call to the handler
+    if (in_yield)
+    {
+        // clear the yield flag
+        in_yield = 0;
+
+        // store the current stack data
+        unsigned long sp = regs->sp;
+        unsigned long ss = regs->ss;
+
+        // call handler
+        micropv_scheduler_yield_callback(regs);
+
+        // if the timer irq changed the stack then apply the changes
+        if ((sp != regs->sp) || (ss != regs->ss))
+        {
+            // switch stacks in the hypervisor
+            HYPERVISOR_stack_switch(regs->ss, regs->sp);
+
+            // set CR0.TS so that the next time that there is an SSE (floating point) access
+            // we get a device_disabled trap
+            HYPERVISOR_fpu_taskswitch(1);
+        }
+    }
 }
 
 static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
@@ -101,7 +137,7 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 
     // call the guest OS handler. The guest returns the time to the next interrupt,
     // and will alter the register file if it want's to perform a context switch.
-    timer_period = micropv_scheduler_callback(regs, deadline);
+    timer_period = micropv_scheduler_timer_callback(regs, deadline);
 
     // if the timer irq changed the stack then apply the changes
     if ((sp != regs->sp) || (ss != regs->ss))
@@ -131,7 +167,12 @@ void micropv_scheduler_initialise_context(struct pt_regs *regs, void *start_ptr,
 
 void micropv_scheduler_yield(void)
 {
-    HYPERVISOR_sched_op(SCHEDOP_yield, 0);
+    if (-1 != yield_port)
+    {
+        in_yield = 1;
+        if (micropv_fire_event(yield_port))
+            PRINTK("Error firing context_switch_event");
+    }
 }
 
 void micropv_scheduler_block(void)
@@ -145,7 +186,10 @@ void xenscheduler_init(void)
     xentime_stop_periodic();
 
     // bind the timer virtual IRQ
-    port = xenevents_bind_virq(VIRQ_TIMER, &timer_handler);
+    timer_port = xenevents_bind_virq(VIRQ_TIMER, &timer_handler);
+
+    // create the yield event
+    xenevents_create_event(&yield_port, yield_handler);
 
     // initialise the periodic timer
     timer_deadline = micropv_time_monotonic_clock() + timer_period;
@@ -158,7 +202,7 @@ void micropv_exit(void)
 
     for (;;)
     {
-        struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_crash };
+        struct sched_shutdown sched_shutdown = { .reason = SHUTDOWN_reboot };
         HYPERVISOR_sched_op(SCHEDOP_shutdown, &sched_shutdown);
     }
 }

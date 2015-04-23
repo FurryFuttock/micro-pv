@@ -198,7 +198,7 @@ int xenconsole_init(void)
         return 0;
 
     // bind to the console event channel
-    port = xenevents_bind_channel(xenconsole_event(), xenconsole_event_handler);
+    port = xenevents_bind_handler(xenconsole_event(), xenconsole_event_handler);
     if (port == -1)
     {
         PRINTK("XEN console channel bind failed");

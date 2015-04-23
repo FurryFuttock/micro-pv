@@ -232,6 +232,7 @@ typedef struct micropv_pci_handle_t
 } micropv_pci_handle_t;
 
 typedef uint32_t xenbus_transaction_t;
+typedef void (*evtchn_handler_t)(uint32_t port, struct pt_regs *register_file, void *context);
 
 /*---------------------------------------------------------------------
   -- function prototypes
@@ -247,6 +248,16 @@ void micropv_interrupt_disable(void);
  * Simulate a processor STI. Internally this just enables hypervisor events.
  */
 void micropv_interrupt_enable(void);
+
+/**
+ * Fire an event previously created by micropv_create_event
+ *
+ * @param event_port Port number returned by micropv_create_event
+ *
+ * @return 0 => success, otherwise fail
+ */
+int micropv_fire_event(uint32_t event_port);
+
 
 // --------- SCHEDULER FUNCTIONS
 /**
@@ -390,13 +401,13 @@ void micropv_shared_memory_publish(int remote_dom, const char *name, const void 
  * Consume a shared page. The page MUST be one complete
  * processor page, i.e. declare as char
  * __atribute__((aligned(4096)).
- * 
+ *
  * @param handle Stores the grant context data.
  * @param name   Name of the entry in the Xen store (relative to
  *               this VM)
  * @param buffer Address of the memory to be mapped. This must
  *               be a pointer to a processor page.
- * 
+ *
  * @return 0 on success, otherwise -1.
  */
 int micropv_shared_memory_consume(micropv_grant_handle_t *handle, const char *name, void *buffer);
@@ -520,10 +531,21 @@ int micropv_pci_msi_disable(micropv_pci_handle_t *handle);
  * the multitasking context switch is going to occur.
  *
  * @param regs The processor register file
+ * @param deadline The absolute time that this event should have happened
  *
  * @return The timer interrupt period in nanoseconds.
  */
-extern uint64_t (*micropv_scheduler_callback)(struct pt_regs *regs, uint64_t deadline);
+extern uint64_t (*micropv_scheduler_timer_callback)(struct pt_regs *regs, uint64_t deadline);
+
+/**
+ * This is the register where the overlying operating system must store the
+ * pointer to its' yield handler. This is called when a process
+ * yields control
+ *
+ * @param regs The processor register file
+ *
+ */
+extern void (*micropv_scheduler_yield_callback)(struct pt_regs *regs);
 
 /**
  * This is the register where the overlying operating system must store the

@@ -50,7 +50,6 @@ do {                                                           \
 /*---------------------------------------------------------------------
   -- data types
   ---------------------------------------------------------------------*/
-typedef void (*evtchn_handler_t)(evtchn_port_t, struct pt_regs*, void*);
 
 /*---------------------------------------------------------------------
   -- function prototypes
@@ -78,7 +77,7 @@ evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t probe);
  *
  * @return -1 if falure, otherwise the associted port number
  */
-evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler);
+evtchn_port_t xenevents_bind_handler(int channel, evtchn_handler_t handler);
 
 /**
  * Ask the hypervisor to give us a new channel
@@ -100,6 +99,19 @@ int xenevents_alloc_channel(int remote_dom, int *channel);
  * @param port port to free
  */
 void xenevents_unbind_channel(evtchn_port_t port);
+
+/**
+ * Create an event channel and assign the callback
+ *
+ * @param event_channel
+ *                   Id of the created event channel.
+ * @param event_port This mus be used to signal the event.
+ * @param event_handler
+ *                   Callback function
+ *
+ * @return 0 => success, otherwise fail
+ */
+int xenevents_create_event(evtchn_port_t *event_port, evtchn_handler_t event_handler);
 
 /*---------------------------------------------------------------------
   -- global variables

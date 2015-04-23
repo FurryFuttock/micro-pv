@@ -97,7 +97,7 @@ static void default_handler(evtchn_port_t port, struct pt_regs *regs, void *igno
     PRINTK("[Port %d] - event received", port);
 }
 
-evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *data)
+evtchn_port_t bind_event_handler(evtchn_port_t port, evtchn_handler_t handler, void *data)
 {
     // sanity check
     if ((port < 0) || (port >= NUM_CHANNELS))
@@ -116,7 +116,7 @@ evtchn_port_t bind_evtchn(evtchn_port_t port, evtchn_handler_t handler, void *da
     return port;
 }
 
-void unbind_evtchn(evtchn_port_t port)
+void unbind_event_handler(evtchn_port_t port)
 {
     // sanity check
     if ((port < 0) || (port >= NUM_CHANNELS))
@@ -144,7 +144,7 @@ evtchn_port_t bind_virq(uint32_t virq, evtchn_handler_t handler, void *data)
         PRINTK("Failed to bind virtual IRQ %d with rc=%d", virq, rc);
         return -1;
     }
-    bind_evtchn(op.port, handler, data);
+    bind_event_handler(op.port, handler, data);
     return op.port;
 }
 
@@ -267,9 +267,9 @@ evtchn_port_t xenevents_bind_virq(int virq, evtchn_handler_t handler)
     return port;
 }
 
-evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler)
+evtchn_port_t xenevents_bind_handler(int channel, evtchn_handler_t handler)
 {
-    evtchn_port_t port = bind_evtchn(channel, handler, NULL);
+    evtchn_port_t port = bind_event_handler(channel, handler, NULL);
     if (-1 == port)
     {
         PRINTK("Error initialising channel %i", channel);
@@ -282,7 +282,77 @@ evtchn_port_t xenevents_bind_channel(int channel, evtchn_handler_t handler)
 void xenevents_unbind_channel(evtchn_port_t port)
 {
     mask_evtchn(port);
-    unbind_evtchn(port);
+    unbind_event_handler(port);
+}
+
+evtchn_port_t xenevents_bind_interdomain_channel(int remote_dom, int remote_port, int *local_port)
+{
+    int rc;
+
+    evtchn_bind_interdomain_t op;
+    op.remote_dom = remote_dom;
+    op.remote_port = remote_port;
+    rc = HYPERVISOR_event_channel_op(EVTCHNOP_bind_interdomain, &op);
+    if (rc)
+        PRINTK("ERROR: xenevents_alloc_channel failed with rc=%d", rc);
+    else
+        *local_port = op.local_port;
+    return rc;
+}
+
+int xenevents_create_event(evtchn_port_t *event_port, evtchn_handler_t event_handler)
+{
+    int remote_port;
+    if (xenevents_alloc_channel(DOMID_SELF, &remote_port))
+    {
+        PRINTK("Failed to create event channel");
+        return -1;
+    }
+
+    int local_port;
+    if (xenevents_bind_interdomain_channel(DOMID_SELF, remote_port, &local_port))
+    {
+        PRINTK("Failed to bind to interdomain channel");
+        return -1;
+    }
+
+    int local_channel;
+    local_channel = xenevents_bind_handler(local_port, event_handler);
+    if (-1 == local_channel)
+    {
+        PRINTK("Failed to bind event");
+        return -1;
+    }
+
+    // the event is sent to the remote port, this will fire the local event handler
+    // logic is kind of weird but it works. I wonder if there is a better way of doing this.
+    *event_port = remote_port;
+
+    return 0;
+}
+
+int micropv_fire_event(uint32_t event_port)
+{
+    // sanity check
+    if ((event_port < 0) || (event_port >= NUM_CHANNELS))
+    {
+        PRINTK("ERROR: Invalid port %i", event_port);
+        return -1;
+    }
+
+    evtchn_send_t op =
+    {
+        .port = event_port
+    };
+    int rc;
+
+    if ((rc = HYPERVISOR_event_channel_op(EVTCHNOP_send, &op)) != 0)
+    {
+        PRINTK("Failed to send event %i", rc);
+        return -1;
+    }
+
+    return 0;
 }
 
 void micropv_interrupt_disable(void)

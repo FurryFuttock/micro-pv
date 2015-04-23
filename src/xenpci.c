@@ -157,7 +157,7 @@ int micropv_pci_map_bus(micropv_pci_handle_t *handle)
 
     if (xenevents_alloc_channel(handle->bus->backend_domain, &handle->bus->channel))
         goto fail;
-    handle->bus->port = xenevents_bind_channel(handle->bus->channel, pci_event_handler);
+    handle->bus->port = xenevents_bind_handler(handle->bus->channel, pci_event_handler);
 
     memset(handle->bus->page_buffer, 0, 4096);
     handle->bus->grant_ref = xengnttab_share(handle->bus->backend_domain, handle->bus->page_buffer, 0);

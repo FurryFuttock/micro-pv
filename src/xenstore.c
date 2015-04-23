@@ -308,7 +308,7 @@ int xenstore_set_perms(xenbus_transaction_t xbt, const char *path, const char *v
 void xenstore_wait_for_event()
 {
     while (!xenstore_event_fired)
-        micropv_scheduler_yield();
+        micropv_scheduler_block();
 
     micropv_interrupt_disable();
     xenstore_event_fired = 0;
@@ -530,7 +530,7 @@ int xenstore_init(void)
         return 0;
 
     // bind to the xenstore event channel
-    port = xenevents_bind_channel(xenstore_event(), xenstore_event_handler);
+    port = xenevents_bind_handler(xenstore_event(), xenstore_event_handler);
     if (port == -1)
     {
         PRINTK("XEN store channel bind failed");
