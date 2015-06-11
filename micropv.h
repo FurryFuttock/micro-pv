@@ -49,8 +49,6 @@ struct micropv_pci_bus_t;
 /*---------------------------------------------------------------------
   -- data types
   ---------------------------------------------------------------------*/
-
-#if !defined(LINUX) && !defined(__KERNEL__)
 /**
  * This is the processor register file. I thought about leaving
  * this as an opaque structure, however I think that it is more
@@ -84,9 +82,6 @@ struct pt_regs {
     unsigned long ss;
 /* top of stack page */
 };
-#else
-typedef uint32_t grant_ref_t;
-#endif
 
 enum xen_register_file
 {
@@ -555,7 +550,7 @@ extern void (*micropv_scheduler_yield_callback)(struct pt_regs *regs);
  *
  * @return Ignored
  */
-extern uint64_t (*micropv_traps_fp_context)(struct pt_regs *regs);
+extern uint64_t (*micropv_traps_fp_callback)(struct pt_regs *regs);
 
 /*---------------------------------------------------------------------
   -- local variables
