@@ -69,7 +69,8 @@
 #define l4_table_offset(_a) \
   (((_a) >> L4_PAGETABLE_SHIFT) & (L4_PAGETABLE_ENTRIES - 1))
 
-#define VIRT_START                  ((unsigned long)&_text)
+//#define VIRT_START                  ((unsigned long)&_text)
+#define VIRT_START                  ((unsigned long)0)
 
 #define to_phys(x)                  ((unsigned long)(x)-VIRT_START)
 #define to_virt(x)                  ((void *)((unsigned long)(x)+VIRT_START))
