@@ -137,7 +137,7 @@ static void timer_handler(evtchn_port_t ev, struct pt_regs *regs, void *ign)
 
     // call the guest OS handler. The guest returns the time to the next interrupt,
     // and will alter the register file if it want's to perform a context switch.
-    timer_period = micropv_scheduler_timer_callback(regs, deadline);
+    timer_period = (micropv_scheduler_timer_callback ? micropv_scheduler_timer_callback : scheduler_timer_dummy)(regs, deadline);
 
     // if the timer irq changed the stack then apply the changes
     if ((sp != regs->sp) || (ss != regs->ss))
