@@ -7,7 +7,7 @@
 .globl _start, shared_info, hypercall_page
 
 .section __xen_guest
-    .ascii  "GUEST_OS=Hacking_Xen_Example"
+    .ascii  "GUEST_OS=micropv"
     .ascii  ",XEN_VER=xen-3.0"
     .ascii  ",VIRT_BASE=0x0"
     .ascii  ",ELF_PADDR_OFFSET=0x0"
