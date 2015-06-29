@@ -124,7 +124,6 @@ void micropv_pci_unmap_bus(micropv_pci_handle_t *handle)
     xenstore_rm(XBT_NIL, frontpath);
 
     // cleanup data
-    handle->status = 0;
     if (handle->bus->grant_ref != -1)
     {
         xengnttab_unshare(handle->bus->grant_ref);
@@ -144,7 +143,6 @@ int micropv_pci_map_bus(micropv_pci_handle_t *handle)
     xenbus_transaction_t xbt = 0;
 
     // set default values so we can cleanup OK
-    handle->status = micropv_pci_run_stopped;
     handle->bus->backend_domain = -1;
     handle->bus->grant_ref = -1;
     handle->bus->port = handle->bus->channel = -1;
@@ -209,9 +207,6 @@ int micropv_pci_map_bus(micropv_pci_handle_t *handle)
     snprintf(value, sizeof(path), "%u", XenbusStateConnected);
     if (xenstore_write_if_different(xbt, path, value))
         goto fail;
-
-    // if we get here then we have initialised correctly
-    handle->status = micropv_pci_run_initialisation_backend;
 
     return 0;
 
@@ -319,12 +314,6 @@ int micropv_pci_scan_bus(micropv_pci_handle_t *handle)
         {
             micropv_pci_conf_read(handle, 0x10 + (i << 2), 4, &handle->device.bar[i]);
             PRINTK("bar[%i]=%x", i, handle->device.bar[i]);
-        }
-
-        for (i = 0; (i < handle->bus->probes) && !handle->dispatcher; i++)
-        {
-            if ((handle->dispatcher = handle->bus->probe[i](handle, &handle->device)) != NULL)
-                handle->status = micropv_pci_run_initialisation_device;
         }
     }
 

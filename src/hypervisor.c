@@ -58,6 +58,7 @@
   -- function prototypes
   ---------------------------------------------------------------------*/
 static void hypervisor_setup_xen_features(void);
+static void console_printkv(const char *file, long line, const char *format, va_list args);
 
 /*---------------------------------------------------------------------
   -- global variables
@@ -66,6 +67,7 @@ uint8_t xen_features[XENFEAT_NR_SUBMAPS * 32];
 
 extern char shared_info[__PAGE_SIZE];
 shared_info_t *hypervisor_shared_info;
+void (*micropv_printkv)(const char *file, long line, const char *format, va_list args) = console_printkv;
 
 /*---------------------------------------------------------------------
   -- local variables
@@ -80,7 +82,7 @@ start_info_t hypervisor_start_info;
   -- public functions
   ---------------------------------------------------------------------*/
 
-void micropv_printkv(const char *file, long line, const char *format, va_list args)
+static void console_printkv(const char *file, long line, const char *format, va_list args)
 {
     va_list args0;;
     int message_length;
@@ -104,12 +106,9 @@ void micropv_printkv(const char *file, long line, const char *format, va_list ar
         uint64_t hour = tv.tv_sec % 24;
         int header_length = psnprintf(header, sizeof(header), "%02lu:%02lu:%02lu.%03lu %s@%.5li: ", hour, minute, second, millisecond, file, line);
 
-        // make sure we are on the original args
-        va_copy(args,  args0);
-
         // create the output string
         char message[message_length + 1];
-        message_length = pvsnprintf(message, message_length + 1, format, args);
+        message_length = pvsnprintf(message, message_length + 1, format, args0);
 
         // send to the console
         HYPERVISOR_console_io(CONSOLEIO_write, header_length, header);
@@ -122,6 +121,8 @@ void micropv_printkv(const char *file, long line, const char *format, va_list ar
             HYPERVISOR_console_io(CONSOLEIO_write, 1, &lf);
         }
     }
+
+    va_end(args0);
 }
 
 void micropv_printk(const char *file, long line, const char *format, ...)

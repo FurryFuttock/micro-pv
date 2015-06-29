@@ -106,14 +106,6 @@ typedef struct micropv_pci_device_t
     uint32_t domain, bus, slot, fun, vendor, device, rev, class, bar[4];
 } micropv_pci_device_t;
 
-/**
- * Can't seem to wrap my brain wround generating a typedef for a
- * function that returns a point to itself, so cast to void *
- *
- * TODO: CORRECT THIS
- */
-typedef void * (*micropv_pci_dispatcher_t)(struct micropv_pci_handle_t *);
-
 typedef struct micropv_pci_bus_t
 {
     /**
@@ -162,40 +154,10 @@ typedef struct micropv_pci_bus_t
      * @author smartin (7/22/2014)
      */
     grant_ref_t grant_ref;
-    /**
-     * Array of functions that we can call to identify the PCI
-     * device. If the device is recognized then the function will
-     * return a pointer to a micropv_pci_device_ops_t.
-     *
-     * @author smartin (7/22/2014)
-     */
-    micropv_pci_dispatcher_t (**probe)(struct micropv_pci_handle_t *handle, micropv_pci_device_t *device);
-    /**
-     * Number of probe functions in the probe array
-     *
-     * @author smartin (7/22/2014)
-     */
-    int probes;
 } micropv_pci_bus_t;
-
-enum micropv_pci_run_status_t
-{
-    micropv_pci_run_stopped,
-    micropv_pci_run_initialisation_backend,
-    micropv_pci_run_initialisation_device,
-    micropv_pci_run_running,
-    micropv_pci_run_stopping,
-};
 
 typedef struct micropv_pci_handle_t
 {
-    /**
-     * Current status of the PCI initialisation device
-     *
-     * @author smartin (7/22/2014)
-     */
-    enum micropv_pci_run_status_t status;
-
     /**
      * Definition of the PCI bus
      *
@@ -213,17 +175,6 @@ typedef struct micropv_pci_handle_t
      * @author smartin (7/23/2014)
      */
     micropv_pci_device_t device;
-
-    /**
-     * Function to dispatch PCI device on this PCI bus. This is set
-     * up to just handle one PCI device. This is enough for me as I
-     * only have one, however other people will have to generalize
-     * this, either defining this as a fixed array or having the
-     * caller assign an array. I think the second option is better.
-     *
-     * @author smartin (7/23/2014)
-     */
-    micropv_pci_dispatcher_t dispatcher;
 } micropv_pci_handle_t;
 
 typedef uint32_t xenbus_transaction_t;
@@ -317,8 +268,9 @@ uint64_t micropv_time_monotonic_clock(void);
 void micropv_printk(const char *file, long line, const char *format, ...) __attribute__((format (printf, 3, 4)));
 
 /**
- * Kernel print routine. Whatever is written here is available in the
- * Xen dmesg log for this VM.
+ * Pointer the base kernel print routine. I had to break this
+ * out because I cant seem to got the console IO working
+ * correctly in the stock Xen in Debian Jessie.
  *
  * @param file   The name of the source file from which this function is called.
  *               Use the builtin __FILE__ macro.
@@ -327,7 +279,7 @@ void micropv_printk(const char *file, long line, const char *format, ...) __attr
  * @param format The standard print format to be applied to the following parameters
  * @param args  va_list of arguments to the format
  */
-void micropv_printkv(const char *file, long line, const char *format, va_list args);
+void (*micropv_printkv)(const char *file, long line, const char *format, va_list args);
 
 /**
  * Kernel print routine. Whatever is written here is available in the
