@@ -154,13 +154,10 @@ static int xenstore_read_response(char *response, size_t response_size, size_t *
     if (msg.len > 0)
     {
         // read the requested response
-        if (response && response_size && (msg.type != XS_ERROR))
-        {
-            register size_t length = MIN(MASK_XENSTORE_IDX(msg.len), response_size);
-            if (response_length)
-                *response_length = length;
-            _xenstore_read_response(response, length);
-        }
+        register size_t length = MIN(MASK_XENSTORE_IDX(msg.len), response_size);
+        if (response_length)
+            *response_length = length;
+        _xenstore_read_response(response, length);
 
         // read the remainder
         if (response_size < msg.len)
@@ -232,7 +229,6 @@ int xenstore_read(xenbus_transaction_t xbt, const char *key, char *value, size_t
     msg.tx_id = xbt;
     msg.len = key_length;
 
-    // run this as a coroutine
     if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
         ((rc = xenstore_write_request(key, key_length)) != 0))
     {
@@ -260,7 +256,6 @@ int xenstore_get_perms(xenbus_transaction_t xbt, const char *path, char *value, 
     msg.tx_id = xbt;
     msg.len = key_length;
 
-    // run this as a coroutine
     if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
         ((rc = xenstore_write_request(path, key_length)) != 0))
     {
@@ -289,7 +284,6 @@ int xenstore_set_perms(xenbus_transaction_t xbt, const char *path, const char *v
     msg.tx_id = xbt;
     msg.len = key_length + value_length;
 
-    // run this as a coroutine
     if (((rc = xenstore_write_request((char *)&msg, sizeof(msg))) != 0) ||
         ((rc = xenstore_write_request(path, key_length)) != 0) ||
         ((rc = xenstore_write_request(values, value_length)) != 0))

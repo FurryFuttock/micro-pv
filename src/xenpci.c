@@ -76,64 +76,67 @@ static void pci_event_handler(evtchn_port_t port, struct pt_regs *register_file,
 
 void micropv_pci_unmap_bus(micropv_pci_handle_t *handle)
 {
-    // disconnect from hypervisor
-    char frontpath[64];
-    snprintf(frontpath, sizeof(frontpath), "%s/state", handle->bus->nodename);
-    char backpath[64];
-    snprintf(backpath, sizeof(backpath), "%s/state", handle->bus->backend_path);
-
-    char value[32];
-    snprintf(value, sizeof(frontpath), "%u", XenbusStateClosing);
-    xenstore_write_if_different(XBT_NIL, frontpath, value);
-
-    int state;
-    xenstore_read_integer(XBT_NIL, backpath, &state);
-    while (state < XenbusStateClosing)
+    if (handle->bus->backend_domain != -1)
     {
-        xenstore_wait_for_event();
+        // disconnect from hypervisor
+        char frontpath[64];
+        snprintf(frontpath, sizeof(frontpath), "%s/state", handle->bus->nodename);
+        char backpath[64];
+        snprintf(backpath, sizeof(backpath), "%s/state", handle->bus->backend_path);
+
+        char value[32];
+        snprintf(value, sizeof(frontpath), "%u", XenbusStateClosing);
+        xenstore_write_if_different(XBT_NIL, frontpath, value);
+
+        int state;
         xenstore_read_integer(XBT_NIL, backpath, &state);
-    }
+        while (state < XenbusStateClosing)
+        {
+            xenstore_wait_for_event();
+            xenstore_read_integer(XBT_NIL, backpath, &state);
+        }
 
-    snprintf(value, sizeof(value), "%u", XenbusStateClosed);
-    xenstore_write_if_different(XBT_NIL, frontpath, value);
+        snprintf(value, sizeof(value), "%u", XenbusStateClosed);
+        xenstore_write_if_different(XBT_NIL, frontpath, value);
 
-    xenstore_read_integer(XBT_NIL, backpath, &state);
-    while (state < XenbusStateClosed)
-    {
-        xenstore_wait_for_event();
         xenstore_read_integer(XBT_NIL, backpath, &state);
-    }
+        while (state < XenbusStateClosed)
+        {
+            xenstore_wait_for_event();
+            xenstore_read_integer(XBT_NIL, backpath, &state);
+        }
 
-    snprintf(value, sizeof(value), "%u", XenbusStateUnknown);
-    xenstore_write_if_different(XBT_NIL, frontpath, value);
+        snprintf(value, sizeof(value), "%u", XenbusStateUnknown);
+        xenstore_write_if_different(XBT_NIL, frontpath, value);
 
 #if 0
-
-    //xenstore_read_integer(XBT_NIL, backpath, &state);
-    //while ((state < XenbusStateInitWait) || (state >= XenbusStateClosed))
-    //{
-    //        xenstore_wait_for_event();
-    //        xenstore_read_integer(XBT_NIL, backpath, &state);
-    //}
+        //xenstore_read_integer(XBT_NIL, backpath, &state);
+        //while ((state < XenbusStateInitWait) || (state >= XenbusStateClosed))
+        //{
+        //        xenstore_wait_for_event();
+        //        xenstore_read_integer(XBT_NIL, backpath, &state);
+        //}
 #endif
 
-    snprintf(frontpath, sizeof(frontpath), "%s/info-ref", handle->bus->nodename);
-    xenstore_rm(XBT_NIL, frontpath);
+        snprintf(frontpath, sizeof(frontpath), "%s/info-ref", handle->bus->nodename);
+        xenstore_rm(XBT_NIL, frontpath);
 
-    snprintf(frontpath, sizeof(frontpath), "%s/event-channel", handle->bus->nodename);
-    xenstore_rm(XBT_NIL, frontpath);
+        snprintf(frontpath, sizeof(frontpath), "%s/event-channel", handle->bus->nodename);
+        xenstore_rm(XBT_NIL, frontpath);
 
-    // cleanup data
-    if (handle->bus->grant_ref != -1)
-    {
-        xengnttab_unshare(handle->bus->grant_ref);
-        handle->bus->grant_ref = 0;
-    }
-    if (handle->bus->port != -1)
-    {
-        xenevents_unbind_channel(handle->bus->port);
-        handle->bus->port = -1;
-        handle->bus->channel = -1;
+        // cleanup data
+        if (handle->bus->grant_ref != -1)
+        {
+            xengnttab_unshare(handle->bus->grant_ref);
+            handle->bus->grant_ref = 0;
+        }
+        if (handle->bus->port != -1)
+        {
+            xenevents_unbind_channel(handle->bus->port);
+            handle->bus->port = -1;
+            handle->bus->channel = -1;
+        }
+        handle->bus->backend_domain = -1;
     }
 }
 
