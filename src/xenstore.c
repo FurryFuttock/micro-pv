@@ -609,3 +609,18 @@ int micropv_is_ready(xenbus_transaction_t xbt)
         return value;
 }
 
+int micropv_registry_read_integer(xenbus_transaction_t xbt, const char *path, int32_t *value)
+{
+    return xenstore_read_integer(xbt, path, value);
+}
+
+int micropv_registry_write_integer(xenbus_transaction_t xbt, const char *path, int32_t value)
+{
+    return xenstore_write_integer(xbt, path, value);
+}
+
+int micropv_registry_rm(xenbus_transaction_t xbt, const char *path)
+{
+    return xenstore_rm(xbt, path);
+}
+

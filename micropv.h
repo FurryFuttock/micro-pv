@@ -345,6 +345,13 @@ int micropv_console_write(const void *ptr, size_t len);
 void micropv_shared_memory_publish(int remote_dom, const char *name, const void *buffer, int readonly);
 
 /**
+ * Unpublish a shared page.
+ *
+ * @param name     Name that will appear in the Xen store.
+ */
+void micropv_shared_memory_unpublish(const char *name);
+
+/**
  * Consume a shared page. The page MUST be one complete
  * processor page, i.e. declare as char
  * __atribute__((aligned(4096)).
@@ -429,6 +436,11 @@ int micropv_is_shutdown(xenbus_transaction_t xbt);
  *         data is ready
  */
 int micropv_is_ready(xenbus_transaction_t xbt);
+
+//--- REGISTRY
+int micropv_registry_read_integer(xenbus_transaction_t xbt, const char *path, int *value);
+int micropv_registry_write_integer(xenbus_transaction_t xbt, const char *path, int value);
+int micropv_registry_rm(xenbus_transaction_t xbt, const char *path);
 
 //--- PCI interface
 /**

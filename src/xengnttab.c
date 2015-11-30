@@ -315,6 +315,20 @@ void micropv_shared_memory_publish(int remote_dom, const char *name, const void 
     xenstore_write_integer(XBT_NIL, name, ref);
 }
 
+void micropv_shared_memory_unpublish(const char *name)
+{
+    // get the grant ref
+    int ref;
+    if (xenstore_read_integer(XBT_NIL, name, &ref))
+        return;
+
+    // unpublish this shared page in the xenstore
+    xenstore_rm(XBT_NIL, name);
+
+    // unshare this
+    xengnttab_unshare(ref);
+}
+
 static void xengnttab_list_v1()
 {
     grant_entry_v1_t *gnttab_table = (grant_entry_v1_t *) grant_table_pages;
